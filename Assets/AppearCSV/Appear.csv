@@ -1,0 +1,5 @@
+﻿time,enemyId,x,y
+0.3,SmallEnemy,3,1
+0.5,SmallEnemy,3,2
+0.7,SmallEnemy,3,3
+0.9,SmallEnemy,3,4
