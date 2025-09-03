@@ -3,35 +3,43 @@ using UnityEngine.Events;
 
 public class Health : MonoBehaviour
 {
-    public int maxHP = 5;
+    public float maxHP = 5f;
 
     public UnityEvent onHit;
     public UnityEvent onDeath;
-    public UnityEvent<int, int> onHpChanged = new(); // ★追加 (current, max)
+    public UnityEvent<float, float> onHpChanged = new(); // current, max
 
-    [HideInInspector] public int hp;
+    [HideInInspector] public float hp;
 
     void Awake()
     {
         hp = maxHP;
-        onHpChanged.Invoke(hp, maxHP);              // 初期値を通知
+        onHpChanged.Invoke(hp, maxHP);
     }
 
-    public void Take(int dmg)
+    public void Take(float dmg)
     {
         hp -= dmg;
         onHit?.Invoke();
-        onHpChanged.Invoke(hp, maxHP);              // ★HP 更新通知
-        if (hp <= 0)
+        onHpChanged.Invoke(hp, maxHP);
+
+        if (hp <= 0f)
         {
             onDeath?.Invoke();
             Destroy(gameObject);
         }
     }
 
-    public void Heal(int v)
+    public void Heal(float v)
     {
         hp = Mathf.Min(maxHP, hp + v);
-        onHpChanged.Invoke(hp, maxHP);              // ★HP 更新通知
+        onHpChanged.Invoke(hp, maxHP);
+    }
+
+    public void SetMax(float newMax, bool fill = false)
+    {
+        maxHP = newMax;
+        if (fill) hp = maxHP;
+        onHpChanged.Invoke(hp, maxHP);
     }
 }

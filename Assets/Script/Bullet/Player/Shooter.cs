@@ -8,6 +8,9 @@ public class Shooter : MonoBehaviour
     private ObjectPool chargePool;
     private ObjectPool normalPool;
 
+    [HideInInspector] public float normalDamageMul = 1f;
+    [HideInInspector] public float chargePowerMul = 1f;
+
     bool autoFire;
     float cd;
     float hold;
@@ -40,17 +43,15 @@ public class Shooter : MonoBehaviour
     void FireNormal()
     {
         var go = normalPool.Spawn(muzzle.position, Quaternion.identity);
-        if (!go) return;
         var b = go.GetComponent<Bullet>();
-        go.layer = LayerMask.NameToLayer("PlayerBullet");
-        b.dir = Vector2.right;
+        b.damage = Mathf.RoundToInt(b.damage * normalDamageMul);
     }
+
     void FireCharge()
     {
         var go = chargePool.Spawn(muzzle.position, Quaternion.identity);
-        if (!go) return;
         var b = go.GetComponent<Bullet>();
-        go.layer = LayerMask.NameToLayer("PlayerBullet");
-        b.dir = Vector2.right; b.damage *= 4; b.speed *= 0.8f;
+        b.damage = Mathf.RoundToInt(b.damage * normalDamageMul * chargePowerMul);
+        go.transform.localScale *= chargePowerMul;   // ÉTÉCÉYÇ‡ägëÂ
     }
 }

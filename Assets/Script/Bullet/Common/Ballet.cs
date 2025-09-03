@@ -3,7 +3,7 @@ using UnityEngine;
 public class Bullet : MonoBehaviour
 {
     public float speed = 12f;
-    public int damage = 1;
+    public float damage = 1f;
     public Vector2 dir = Vector2.right;
     public float life = 3f;
     float t;
@@ -18,6 +18,7 @@ public class Bullet : MonoBehaviour
     {
         if (gameObject.layer == LayerMask.NameToLayer("PlayerBullet") && other.CompareTag("Enemy"))
         {
+            Debug.Log("Hit Enemy");
             other.GetComponent<Health>()?.Take(damage);
             gameObject.SetActive(false);
         }
