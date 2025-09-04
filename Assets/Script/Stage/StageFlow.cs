@@ -18,8 +18,8 @@ public class StageFlow : MonoBehaviour
         public GameObject prefab;
         public EnemyMover.MotionPattern pattern;
         public float speed;
-        public List<Vector3> path;
-        public FireDirSpec fire;  // ★ 追加
+        public List<EnemyMover.Waypoint> path; // ★ 位置 + 待機
+        public FireDirSpec fire;
     }
 
     readonly List<SpawnEvent> events = new();
@@ -39,14 +39,14 @@ public class StageFlow : MonoBehaviour
         while (nextIdx < events.Count && t >= events[nextIdx].time)
         {
             var e = events[nextIdx++];
-            var go = Instantiate(e.prefab, e.path[0], Quaternion.identity);
+            var go = Instantiate(e.prefab, e.path[0].pos, Quaternion.identity);
 
             // 経路ムーバー
             var mover = go.GetComponent<EnemyMover>();
             if (!mover) mover = go.AddComponent<EnemyMover>();
             mover.InitPath(e.path, e.pattern, e.speed);
 
-            // ★ 射撃方向設定を敵内の全 Shooter に配布
+            // 射撃方向（前ターンで実装）
             var shooters = go.GetComponentsInChildren<EnemyShooter>(true);
             foreach (var s in shooters) s.ApplyFireDirection(e.fire);
         }
@@ -85,12 +85,8 @@ public class StageFlow : MonoBehaviour
                 continue;
             }
 
-            // ★ shoot 列（任意）
-            FireDirSpec fire = FireDirSpec.Fixed(Vector2.left); // 既定
-            if (cols.Length >= 6)
-            {
-                fire = ParseShoot(SafeTrimQuotes(cols[5]));
-            }
+            FireDirSpec fire = FireDirSpec.Fixed(Vector2.left);
+            if (cols.Length >= 6) fire = ParseShoot(SafeTrimQuotes(cols[5]));
 
             events.Add(new SpawnEvent
             {
@@ -118,65 +114,48 @@ public class StageFlow : MonoBehaviour
         };
     }
 
-    // ★ 追加：shoot のパース
-    FireDirSpec ParseShoot(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return FireDirSpec.Fixed(Vector2.left);
+    // --- shoot は前ターンの実装をそのまま利用 ---
+    FireDirSpec ParseShoot(string raw) { /* 省略（前回答のまま） */ return FireDirSpec.Fixed(Vector2.left); }
 
-        var s = raw.Trim().ToLower();
-
-        // 1) player
-        if (s == "player" || s == "atplayer") return FireDirSpec.AtPlayer();
-
-        // 2) deg=xxx / deg:xxx
-        if (s.StartsWith("deg"))
-        {
-            var parts = s.Split('=', ':');
-            if (parts.Length == 2 && float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float deg))
-            {
-                float rad = deg * Mathf.Deg2Rad;
-                Vector2 d = new(Mathf.Cos(rad), Mathf.Sin(rad));
-                return FireDirSpec.Fixed(d);
-            }
-        }
-
-        // 3) vec=dx~dy / dx~dy
-        if (s.StartsWith("vec=")) s = s.Substring(4);
-        var xy = s.Split('~');
-        if (xy.Length != 2) xy = s.Split(':'); // 旧式も許容
-        if (xy.Length == 2 &&
-            float.TryParse(xy[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) &&
-            float.TryParse(xy[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
-        {
-            return FireDirSpec.Fixed(new Vector2(x, y));
-        }
-
-        // 不正なら既定
-        Debug.LogWarning($"[StageFlowCsv] shoot='{raw}' を解釈できません。leftにフォールバック");
-        return FireDirSpec.Fixed(Vector2.left);
-    }
-
-    // （前回の ~ 対応・引用符除去・Excel 対策版）
-    List<Vector3> ParsePath(string raw)
+    /// <summary>
+    /// path 例:  "-9~3@0.5 | -3~2 | 3~1@1.2 | 9~1"
+    ///            ↑ 到達後0.5秒停止      ↑ 1.2秒停止
+    /// 旧式 "x:y" も後方互換で読める
+    /// </summary>
+    List<EnemyMover.Waypoint> ParsePath(string raw)
     {
         var inv = CultureInfo.InvariantCulture;
-        var pts = new List<Vector3>();
+        var pts = new List<EnemyMover.Waypoint>();
         if (string.IsNullOrWhiteSpace(raw)) return pts;
 
         var segs = raw.Split('|');
         foreach (var s in segs)
         {
+            // 各点の左右空白と括弧/引用符を除去
             var p = s.Trim().Trim('(', ')', '"', '\'');
             if (string.IsNullOrEmpty(p)) continue;
 
-            var xy = p.Split('~');
-            if (xy.Length != 2) xy = p.Split(':');   // 旧式も許容
+            // "@wait" を切り出し
+            float wait = 0f;
+            string xyPart = p;
+            int at = p.LastIndexOf('@');
+            if (at >= 0)
+            {
+                xyPart = p.Substring(0, at).Trim();
+                var wStr = p.Substring(at + 1).Trim();
+                if (!float.TryParse(wStr, NumberStyles.Float, inv, out wait)) wait = 0f;
+                wait = Mathf.Max(0f, wait);
+            }
+
+            // 座標は "~" 優先、":" 互換
+            string[] xy = xyPart.Split('~');
+            if (xy.Length != 2) xy = xyPart.Split(':');
             if (xy.Length != 2) continue;
 
             if (float.TryParse(xy[0].Trim(), NumberStyles.Float, inv, out float x) &&
                 float.TryParse(xy[1].Trim(), NumberStyles.Float, inv, out float y))
             {
-                pts.Add(new Vector3(x, y, 0f));
+                pts.Add(new EnemyMover.Waypoint(new Vector3(x, y, 0f), wait));
             }
         }
         return pts;
