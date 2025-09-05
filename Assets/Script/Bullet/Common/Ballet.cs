@@ -18,7 +18,6 @@ public class Bullet : MonoBehaviour
     {
         if (gameObject.layer == LayerMask.NameToLayer("PlayerBullet") && other.CompareTag("Enemy"))
         {
-            Debug.Log("Hit Enemy");
             other.GetComponent<Health>()?.Take(damage);
             gameObject.SetActive(false);
         }

@@ -1,5 +1,6 @@
-﻿using UnityEngine;
+﻿using GrowShooting.Audio;
 using System.Collections;
+using UnityEngine;
 
 public class EnemyBase : MonoBehaviour
 {
@@ -45,8 +46,8 @@ public class EnemyBase : MonoBehaviour
         var hp = GetComponent<Health>();
         if (hp)
         {
-            hp.onHit.AddListener(StartShake);
             hp.onDeath.AddListener(AddKillScore);
+            hp.onDeath.AddListener(RingOnDestroy);
         }
 
         if (fallbackDir.sqrMagnitude > 0f) fallbackDir.Normalize(); else fallbackDir = Vector2.left;
@@ -96,39 +97,14 @@ public class EnemyBase : MonoBehaviour
         }
     }
 
-    //----------------------------------------------------
-    void StartShake()
-    {
-        if (shakeCo != null) StopCoroutine(shakeCo);
-        shakeCo = StartCoroutine(HitShake());
-    }
-
-    IEnumerator HitShake()
-    {
-        float elapsed = 0f;
-        float baseY = transform.localPosition.y;
-
-        while (elapsed < shakeDuration)
-        {
-            float phase = elapsed / shakeDuration * Mathf.PI * 2f * shakeCycles;
-            float offset = Mathf.Sin(phase) * shakeAmplitude;
-
-            var pos = transform.localPosition;
-            pos.y = baseY + offset;
-            transform.localPosition = pos;
-
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        var p = transform.localPosition;
-        p.y = baseY;
-        transform.localPosition = p;
-        shakeCo = null;
-    }
-
     void AddKillScore()
     {
         if (ScoreManager.Instance) ScoreManager.Instance.AddScore(scoreValue);
     }
+
+    void RingOnDestroy()
+    {
+        SoundManager.Instance.Play(SoundEffect.EnemyDown);
+    }
+
 }

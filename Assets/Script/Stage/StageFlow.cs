@@ -28,9 +28,9 @@ public class StageFlow : MonoBehaviour
 
     void Awake()
     {
-        if (!csvFile) { Debug.LogError("[StageFlowCsv] CSV が未設定"); return; }
+        if (!csvFile){ Debug.LogError("[StageFlowCsv] CSV が未設定"); return; }
         ParseCsv(csvFile.text);
-        events.Sort((a, b) => a.time.CompareTo(b.time));
+        events.Sort((a,b)=>a.time.CompareTo(b.time));
     }
 
     void Update()
@@ -68,28 +68,27 @@ public class StageFlow : MonoBehaviour
             var cols = lines[i].Split(',');
             if (cols.Length < 5)
             {
-                Debug.LogWarning($"CSV 行{i + 1}: 列不足 (need>=5) : {lines[i]}");
+                Debug.LogWarning($"CSV 行{i+1}: 列不足 (need>=5) : {lines[i]}");
                 continue;
             }
 
-            float time = float.Parse(cols[0], inv);
-            string id = cols[1].Trim();
-            var pattern = ParsePattern(cols[2].Trim());
-            float speed = float.Parse(cols[3], inv);
-            string pathRaw = SafeTrimQuotes(cols[4]);
-            var path = ParsePath(pathRaw);
+            float time    = float.Parse(cols[0], inv);
+            string id     = cols[1].Trim();
+            var pattern   = ParsePattern(cols[2].Trim());
+            float speed   = float.Parse(cols[3], inv);
+            string pathRaw= SafeTrimQuotes(cols[4]);
+            var path      = ParsePath(pathRaw);
 
             if (path == null || path.Count < 2)
             {
-                Debug.LogWarning($"CSV 行{i + 1}: path が不正（最低2点必要）: {cols[4]}");
+                Debug.LogWarning($"CSV 行{i+1}: path が不正（最低2点必要）: {cols[4]}");
                 continue;
             }
 
             FireDirSpec fire = FireDirSpec.Fixed(Vector2.left);
             if (cols.Length >= 6) fire = ParseShoot(SafeTrimQuotes(cols[5]));
 
-            events.Add(new SpawnEvent
-            {
+            events.Add(new SpawnEvent{
                 time = time,
                 prefab = FindPrefab(id),
                 pattern = pattern,
@@ -104,24 +103,52 @@ public class StageFlow : MonoBehaviour
 
     EnemyMover.MotionPattern ParsePattern(string s)
     {
-        return s.ToLower() switch
-        {
-            "linear" => EnemyMover.MotionPattern.Linear,
-            "smooth" => EnemyMover.MotionPattern.SmoothSpline,
-            "smoothspline" => EnemyMover.MotionPattern.SmoothSpline,
-            "arrive" => EnemyMover.MotionPattern.Arrive,
+        return s.ToLower() switch {
+            "linear"        => EnemyMover.MotionPattern.Linear,
+            "smooth"        => EnemyMover.MotionPattern.SmoothSpline,
+            "smoothspline"  => EnemyMover.MotionPattern.SmoothSpline,
+            "arrive"        => EnemyMover.MotionPattern.Arrive,
             _ => EnemyMover.MotionPattern.Linear,
         };
     }
 
-    // --- shoot は前ターンの実装をそのまま利用 ---
-    FireDirSpec ParseShoot(string raw) { /* 省略（前回答のまま） */ return FireDirSpec.Fixed(Vector2.left); }
+    FireDirSpec ParseShoot(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return FireDirSpec.Fixed(Vector2.left);
 
-    /// <summary>
-    /// path 例:  "-9~3@0.5 | -3~2 | 3~1@1.2 | 9~1"
-    ///            ↑ 到達後0.5秒停止      ↑ 1.2秒停止
-    /// 旧式 "x:y" も後方互換で読める
-    /// </summary>
+        var s = raw.Trim().ToLower();
+
+        // 1) player
+        if (s == "player" || s == "atplayer") return FireDirSpec.AtPlayer();
+
+        // 2) deg=xxx / deg:xxx
+        if (s.StartsWith("deg"))
+        {
+            var parts = s.Split('=', ':');
+            if (parts.Length == 2 && float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float deg))
+            {
+                float rad = deg * Mathf.Deg2Rad;
+                Vector2 d = new(Mathf.Cos(rad), Mathf.Sin(rad));
+                return FireDirSpec.Fixed(d);
+            }
+        }
+
+        // 3) vec=dx~dy / dx~dy
+        if (s.StartsWith("vec=")) s = s.Substring(4);
+        var xy = s.Split('~');
+        if (xy.Length != 2) xy = s.Split(':'); // 旧式も許容
+        if (xy.Length == 2 &&
+            float.TryParse(xy[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) &&
+            float.TryParse(xy[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
+        {
+            return FireDirSpec.Fixed(new Vector2(x, y));
+        }
+
+        // 不正なら既定
+        Debug.LogWarning($"[StageFlowCsv] shoot='{raw}' を解釈できません。leftにフォールバック");
+        return FireDirSpec.Fixed(Vector2.left);
+    }
+
     List<EnemyMover.Waypoint> ParsePath(string raw)
     {
         var inv = CultureInfo.InvariantCulture;
@@ -164,7 +191,7 @@ public class StageFlow : MonoBehaviour
     GameObject FindPrefab(string id)
     {
         var p = enemyPrefabs.FirstOrDefault(e => e && e.name == id);
-        if (!p) { Debug.LogWarning($"[StageFlowCsv] id '{id}' 未登録 → default 使用"); p = defaultEnemyPrefab; }
+        if (!p){ Debug.LogWarning($"[StageFlowCsv] id '{id}' 未登録 → default 使用"); p = defaultEnemyPrefab; }
         return p;
     }
 }
