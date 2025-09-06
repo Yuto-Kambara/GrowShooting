@@ -1491,6 +1491,57 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1089560131
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1089560133}
+  - component: {fileID: 1089560134}
+  m_Layer: 0
+  m_Name: SFXManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1089560133
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1089560131}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.83075833, y: 2.4240901, z: 1.8434092}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1089560134
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1089560131}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dfe73f6e1df67ac43847f5d0eb119feb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerShotClip: {fileID: 0}
+  enemyDownClip: {fileID: 8300000, guid: c7f74d3dfd53d4e4fab5fce35e6face3, type: 3}
+  playerHitClip: {fileID: 0}
+  playerShotVolume: 0.8
+  enemyDownVolume: 1
+  playerHitVolume: 0.9
+  poolSize: 10
 --- !u!1 &1299093944
 GameObject:
   m_ObjectHideFlags: 0
@@ -1893,6 +1944,8 @@ MonoBehaviour:
   muzzle: {fileID: 2110872980}
   fireRate: 8
   chargeTime: 1.2
+  normalKey: 107
+  chargeKey: 108
   normalDamageMul: 1
   chargePowerMul: 1
 --- !u!114 &1594079483
@@ -2714,3 +2767,4 @@ SceneRoots:
   - {fileID: 1061611571}
   - {fileID: 755692553}
   - {fileID: 164741541}
+  - {fileID: 1089560133}

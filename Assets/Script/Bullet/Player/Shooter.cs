@@ -1,79 +1,69 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 
-/// <summary>
-/// KF’ÊíƒVƒ‡ƒbƒgi‰Ÿ‚µ‚Ä‚¢‚éŠÔAfireRate ‚É]‚Á‚Ä˜AËj
-/// LFƒ`ƒƒ[ƒWƒVƒ‡ƒbƒgi‰Ÿ‚µn‚ß¨‚½‚ßA—£‚µ‚½‚Æ‚«‚É chargeTime ˆÈã‚È‚ç”­Ëj
-/// ¦L ‚Å‚½‚ßn‚ß‚½‚ç’ÊíƒVƒ‡ƒbƒg‚Í‘¦’â~•—}§
-/// </summary>
 public class Shooter : MonoBehaviour
 {
     [Header("Refs")]
     public Transform muzzle;
 
-    [Header("Fire Params")]
-    public float fireRate = 8f;       // ”­/•biK‚ğ‰Ÿ‚µ‚Ä‚¢‚éŠÔ‚Ì˜AËƒŒ[ƒgj
-    public float chargeTime = 1.2f;   // ‚±‚êˆÈã‚½‚ß‚½‚çƒ`ƒƒ[ƒW’e
+    [Header("Normal Fire")]
+    public float fireRate = 8f;
+    [SerializeField] private KeyCode normalKey = KeyCode.K;
 
-    [Header("Keys")]
-    [SerializeField] private KeyCode normalKey = KeyCode.K;  // ’ÊíƒVƒ‡ƒbƒg
-    [SerializeField] private KeyCode chargeKey = KeyCode.L;  // ƒ`ƒƒ[ƒWƒVƒ‡ƒbƒg
+    [Header("Charge Fire (hold L)")]
+    [SerializeField] private KeyCode chargeKey = KeyCode.L;
+    public float chargeMaxTime = 2.5f;     // ã“ã“ã¾ã§ãƒ›ãƒ¼ãƒ«ãƒ‰ã§ä¸Šé™åˆ°é”
+    public AnimationCurve chargeCurve;     // 0â†’1æˆé•·ã‚«ãƒ¼ãƒ–ï¼ˆæœªè¨­å®šãªã‚‰ç·šå½¢ï¼‰
+    public float previewOffset = 0.2f;     // è‡ªæ©Ÿå‰ã®è¡¨ç¤ºè·é›¢
 
-    private ObjectPool chargePool;
+    [Header("Caps (Base)")]
+    public float baseChargeMaxSizeMul = 1.0f;   // ã‚µã‚¤ã‚ºä¸Šé™ï¼ˆåŸºæº–ã‚¹ã‚±ãƒ¼ãƒ«Ã—ã“ã‚Œï¼‰
+    public float baseChargeMaxDamage = 1.0f;     // ãƒ€ãƒ¡ãƒ¼ã‚¸ä¸Šé™ï¼ˆçµ¶å¯¾å€¤ï¼‰
+
+    [Header("Growth Hooks (xä¸Šé™)")]
+    [HideInInspector] public float chargeMaxSizeMul = 1f;    // èƒ½åŠ›å¼·åŒ–ã§ã‚µã‚¤ã‚ºä¸Šé™ã‚’æ‹¡å¼µ
+    [HideInInspector] public float chargeMaxDamageMul = 1f;  // èƒ½åŠ›å¼·åŒ–ã§æœ€å¤§æ”»æ’ƒåŠ›ã‚’æ‹¡å¼µ
+
+    [Header("Other Growth Hooks")]
+    [HideInInspector] public float normalDamageMul = 1f;     // é€šå¸¸å¼¾ç”¨ï¼ˆæ—¢å­˜ï¼‰
+    // â€»ãƒãƒ£ãƒ¼ã‚¸å¼¾ã®â€œæœ€å¤§â€ã¯ä¸Šè¨˜2ã¤ã§æ‹¡å¼µã€‚å¿…è¦ãªã‚‰é€šå¸¸åŠ ç®—åˆ†ã‚’åˆæœŸå€¤ã¸ä¹—ã›ã¦ã‚‚OKã€‚
+
     private ObjectPool normalPool;
+    private ObjectPool chargePool;
 
-    [HideInInspector] public float normalDamageMul = 1f;
-    [HideInInspector] public float chargePowerMul = 1f;
-
-    // --- “à•”ó‘Ô ---
-    float normalCd;          // ’ÊíƒVƒ‡ƒbƒg—pƒN[ƒ‹ƒ_ƒEƒ“
-    float chargeHold;        // ƒ`ƒƒ[ƒW•ÛŠÔ
-    bool  isCharging;        // ‚¢‚Üƒ`ƒƒ[ƒW’†‚©
+    // å†…éƒ¨
+    float normalCd;
+    bool isCharging;
+    float hold;
+    ChargeBallet preview;     // ç”Ÿæˆæ¸ˆã¿ãƒ—ãƒ¬ãƒ“ãƒ¥ãƒ¼å€‹ä½“å‚ç…§
 
     void Start()
     {
         normalPool = PoolManager.Instance?.NormalBulletPool;
-        if (!normalPool) Debug.LogError("[Shooter] normalPool ‚ª–¢İ’è‚Å‚·");
+        if (!normalPool) Debug.LogError("[Shooter] normalPool æœªè¨­å®š");
         chargePool = PoolManager.Instance?.ChargeBulletPool;
-        if (!chargePool) Debug.LogError("[Shooter] chargePool ‚ª–¢İ’è‚Å‚·");
+        if (!chargePool) Debug.LogError("[Shooter] chargePool æœªè¨­å®š");
     }
 
     void Update()
     {
-        // ==============================
-        // 1) ƒ`ƒƒ[ƒW“ü—ÍiLj
-        // ==============================
+        // ---- ãƒãƒ£ãƒ¼ã‚¸å…¥åŠ› ----
         if (Input.GetKeyDown(chargeKey))
         {
-            // ƒ`ƒƒ[ƒWŠJnF’ÊíƒVƒ‡ƒbƒg‚ğ‘¦’â~
-            isCharging = true;
-            chargeHold = 0f;
-            StopNormalFire();
+            BeginCharge();
         }
-
         if (isCharging)
         {
-            chargeHold += Time.deltaTime;
-            // ƒ`ƒƒ[ƒW’†‚Í’ÊíƒVƒ‡ƒbƒg‚Í—}§‚³‚ê‚éi‰º‚Ì’Êíˆ—‚Å !isCharging ‚ğŒ©‚éj
+            hold += Time.deltaTime;
+            UpdateChargePreview();
         }
-
         if (Input.GetKeyUp(chargeKey))
         {
-            if (chargeHold >= chargeTime)
-            {
-                FireCharge();
-            }
-            // ƒŠƒZƒbƒg
-            isCharging = false;
-            chargeHold = 0f;
+            EndChargeAndFire();
         }
 
-        // ==============================
-        // 2) ’ÊíƒVƒ‡ƒbƒg“ü—ÍiKj
-        //    ¦ƒ`ƒƒ[ƒW’†‚Í”­Ë‚µ‚È‚¢
-        // ==============================
+        // ---- é€šå¸¸ã‚·ãƒ§ãƒƒãƒˆï¼ˆãƒãƒ£ãƒ¼ã‚¸ä¸­ã¯æŠ‘åˆ¶ï¼‰----
         if (!isCharging)
         {
-            // ‰Ÿ‚µ‚½uŠÔ‚É‘¦”­Ë‚³‚¹AˆÈŒã‚Í fireRate ‚É]‚Á‚Ä˜AË
             if (Input.GetKeyDown(normalKey))
             {
                 FireNormal();
@@ -88,41 +78,73 @@ public class Shooter : MonoBehaviour
                     normalCd = 1f / fireRate;
                 }
             }
-            else
-            {
-                // ƒL[‚ğ—£‚µ‚Ä‚¢‚éŠÔ‚ÍCD‚ğƒŠƒZƒbƒg‚µ‚Ä‚¨‚­‚ÆŸ‰ñ‰Ÿ‰º‚Å‘¦”­Ë‚Å‚«‚é
-                normalCd = 0f;
-            }
+            else normalCd = 0f;
         }
     }
 
-    // --- Helpers -----------------------------------------------------
-
-    void StopNormalFire()
+    void BeginCharge()
     {
-        // ’ÊíƒVƒ‡ƒbƒg—p‚ÌƒN[ƒ‹ƒ_ƒEƒ“‚ğƒŠƒZƒbƒgi’¼Œã‚É’e‚ªo‚È‚¢‚æ‚¤‚Éj
-        normalCd = 0f;
+        isCharging = true;
+        hold = 0f;
+
+        // ãƒ—ãƒ¬ãƒ“ãƒ¥ãƒ¼å€‹ä½“ã‚’ç”Ÿæˆã—ã¦è‡ªæ©Ÿå‰ã«è¡¨ç¤º
+        var go = chargePool?.Spawn(muzzle.position, Quaternion.identity);
+        if (!go) { Debug.LogWarning("[Shooter] Charge preview spawn failed"); return; }
+        preview = go.GetComponent<ChargeBallet>();
+        if (!preview) { Debug.LogError("[Shooter] Charge prefab has no ChargeBallet"); return; }
+
+        preview.StartPreview(muzzle, previewOffset);
+        UpdateChargePreview(); // æŠ¼ä¸‹ç›´å¾Œã«ã‚‚1å›åæ˜ 
+    }
+
+    void UpdateChargePreview()
+    {
+        if (!preview) return;
+
+        // ãƒ›ãƒ¼ãƒ«ãƒ‰é€²æ— 0..1ï¼ˆä¸Šé™åˆ°é”ã¾ã§ï¼‰
+        float t01 = Mathf.Clamp01(hold / Mathf.Max(0.0001f, chargeMaxTime));
+        float curve = (chargeCurve != null && chargeCurve.keys.Length > 0) ? chargeCurve.Evaluate(t01) : t01;
+
+        // ä¸Šé™ï¼ˆèƒ½åŠ›å¼·åŒ–ã‚’é©ç”¨ã—ãŸâ€œã„ã¾ã®æœ€å¤§å€¤â€ï¼‰
+        float sizeCapMul = baseChargeMaxSizeMul * Mathf.Max(1f, chargeMaxSizeMul);
+        float damageCapAbs = baseChargeMaxDamage * Mathf.Max(1f, chargeMaxDamageMul);
+
+        // ç¾åœ¨ã‚µã‚¤ã‚ºå€ç‡ï¼ˆ1â†’sizeCapMulï¼‰
+        float sizeMulNow = Mathf.Lerp(1f, sizeCapMul, curve);
+
+        // ç¾åœ¨ã®æƒ³å®šãƒ€ãƒ¡ãƒ¼ã‚¸ï¼ˆã€Œãƒ—ãƒ¬ãƒãƒ–æ—¢å®šÃ—é€šå¸¸å¼·åŒ–ã€ã‹ã‚‰ä¸Šé™ã¸ï¼‰
+        float baseDmgAbs = Mathf.Max(0f, preview.damage) * Mathf.Max(0.01f, normalDamageMul);
+        float desireDmgAbs = Mathf.Lerp(baseDmgAbs, damageCapAbs, curve);
+        float dmgNow = Mathf.Min(desireDmgAbs, damageCapAbs);
+
+        // æ–¹å‘ã‚‚å¸¸ã«æ›´æ–°ï¼ˆè‡ªæ©Ÿã®å‘ãã«è¿½å¾“ï¼‰
+        Vector2 dirNow = muzzle.right;
+
+        preview.UpdatePreview(dmgNow, sizeMulNow);
+        // è¦‹ãŸç›®ã®å‘ãã¯ ChargeBallet å´ã§è¿½å¾“æ¸ˆã¿ï¼ˆUpdateï¼‰
+        // Shooter.UpdateChargePreview() ã®æœ€å¾Œã«ä¸€æ™‚çš„ã«è¿½åŠ 
+        Debug.Log($"sizeCapMul={baseChargeMaxSizeMul * Mathf.Max(1f, chargeMaxSizeMul)}, " +
+                  $"sizeMulNow={Mathf.Lerp(1f, baseChargeMaxSizeMul * Mathf.Max(1f, chargeMaxSizeMul), curve)}, " +
+                  $"goScale={preview.transform.localScale}");
+
+    }
+
+    void EndChargeAndFire()
+    {
+        if (preview) preview.FireNow();
+        preview = null;
+        isCharging = false;
+        hold = 0f;
     }
 
     void FireNormal()
     {
         if (!normalPool || !muzzle) return;
-
         var go = normalPool.Spawn(muzzle.position, Quaternion.identity);
         var b = go.GetComponent<Bullet>();
-        b.damage = Mathf.RoundToInt(b.damage * normalDamageMul);
-    }
+        if (!b) return;
 
-    void FireCharge()
-    {
-        if (!chargePool || !muzzle) return;
-
-        var go = chargePool.Spawn(muzzle.position, Quaternion.identity);
-        var b = go.GetComponent<Bullet>();
-        b.damage = Mathf.RoundToInt(b.damage * normalDamageMul * chargePowerMul);
-
-        // ’ˆÓFƒv[ƒŠƒ“ƒO‰^—p‚Å‚ÍƒXƒP[ƒ‹‚ª—İÏ‚µ‚È‚¢‚æ‚¤‚É
-        // Bullet ‘¤‚Å‰ŠúƒXƒP[ƒ‹‚ğ•œŒ³‚·‚éd‘g‚İ‚ª‚ ‚é‚ÆˆÀ‘S‚Å‚·B
-        go.transform.localScale *= chargePowerMul;   // ƒTƒCƒY‚àŠg‘å
+        b.damage = Mathf.RoundToInt(b.damage * Mathf.Max(0.01f, normalDamageMul));
+        b.dir = muzzle.right;
     }
 }
