@@ -7,7 +7,7 @@ public class Shooter : MonoBehaviour
 
     [Header("Normal Fire")]
     public float fireRate = 8f;
-    [SerializeField] private KeyCode normalKey = KeyCode.K;
+    [SerializeField] private KeyCode normalKey = KeyCode.K;   // ← K トグル
 
     [Header("Charge Fire (hold L)")]
     [SerializeField] private KeyCode chargeKey = KeyCode.L;
@@ -17,7 +17,7 @@ public class Shooter : MonoBehaviour
 
     [Header("Caps (Base)")]
     public float baseChargeMaxSizeMul = 1.0f;   // サイズ上限（基準スケール×これ）
-    public float baseChargeMaxDamage = 1.0f;     // ダメージ上限（絶対値）
+    public float baseChargeMaxDamage = 1.0f;    // ダメージ上限（絶対値）
 
     [Header("Growth Hooks (x上限)")]
     [HideInInspector] public float chargeMaxSizeMul = 1f;    // 能力強化でサイズ上限を拡張
@@ -25,7 +25,6 @@ public class Shooter : MonoBehaviour
 
     [Header("Other Growth Hooks")]
     [HideInInspector] public float normalDamageMul = 1f;     // 通常弾用（既存）
-    // ※チャージ弾の“最大”は上記2つで拡張。必要なら通常加算分を初期値へ乗せてもOK。
 
     private ObjectPool normalPool;
     private ObjectPool chargePool;
@@ -34,7 +33,8 @@ public class Shooter : MonoBehaviour
     float normalCd;
     bool isCharging;
     float hold;
-    ChargeBallet preview;     // 生成済みプレビュー個体参照
+    bool autoFire;                 // ★ 追加：K のオン/オフ状態
+    ChargeBallet preview;          // 生成済みプレビュー個体参照
 
     void Start()
     {
@@ -46,10 +46,10 @@ public class Shooter : MonoBehaviour
 
     void Update()
     {
-        // ---- チャージ入力 ----
+        // ---- チャージ入力（L：ホールド）----
         if (Input.GetKeyDown(chargeKey))
         {
-            BeginCharge();
+            BeginCharge();                 // ★ チャージ開始で通常射撃は停止
         }
         if (isCharging)
         {
@@ -61,15 +61,28 @@ public class Shooter : MonoBehaviour
             EndChargeAndFire();
         }
 
-        // ---- 通常ショット（チャージ中は抑制）----
+        // ---- 通常ショット（K：トグル）----
+        // チャージ中は常に抑制（発射しない）
         if (!isCharging)
         {
+            // K を押すたびにオン/オフ切り替え
             if (Input.GetKeyDown(normalKey))
             {
-                FireNormal();
-                normalCd = 1f / fireRate;
+                autoFire = !autoFire;
+                if (autoFire)
+                {
+                    // トグルON直後に即1発。その後 fireRate に従って連射
+                    FireNormal();
+                    normalCd = 1f / fireRate;
+                }
+                else
+                {
+                    normalCd = 0f;
+                }
             }
-            else if (Input.GetKey(normalKey))
+
+            // オンの間だけ連射
+            if (autoFire)
             {
                 normalCd -= Time.deltaTime;
                 if (normalCd <= 0f)
@@ -78,7 +91,11 @@ public class Shooter : MonoBehaviour
                     normalCd = 1f / fireRate;
                 }
             }
-            else normalCd = 0f;
+        }
+        else
+        {
+            // チャージ中はCDリセット（安全策）
+            normalCd = 0f;
         }
     }
 
@@ -86,6 +103,10 @@ public class Shooter : MonoBehaviour
     {
         isCharging = true;
         hold = 0f;
+
+        // ★ チャージ開始時に通常射撃を停止（仕様どおり）
+        autoFire = false;
+        normalCd = 0f;
 
         // プレビュー個体を生成して自機前に表示
         var go = chargePool?.Spawn(muzzle.position, Quaternion.identity);
@@ -117,16 +138,7 @@ public class Shooter : MonoBehaviour
         float desireDmgAbs = Mathf.Lerp(baseDmgAbs, damageCapAbs, curve);
         float dmgNow = Mathf.Min(desireDmgAbs, damageCapAbs);
 
-        // 方向も常に更新（自機の向きに追従）
-        Vector2 dirNow = muzzle.right;
-
         preview.UpdatePreview(dmgNow, sizeMulNow);
-        // 見た目の向きは ChargeBallet 側で追従済み（Update）
-        // Shooter.UpdateChargePreview() の最後に一時的に追加
-        Debug.Log($"sizeCapMul={baseChargeMaxSizeMul * Mathf.Max(1f, chargeMaxSizeMul)}, " +
-                  $"sizeMulNow={Mathf.Lerp(1f, baseChargeMaxSizeMul * Mathf.Max(1f, chargeMaxSizeMul), curve)}, " +
-                  $"goScale={preview.transform.localScale}");
-
     }
 
     void EndChargeAndFire()
@@ -135,6 +147,7 @@ public class Shooter : MonoBehaviour
         preview = null;
         isCharging = false;
         hold = 0f;
+        // 通常射撃は自動再開しない（Kで再トグル）
     }
 
     void FireNormal()
