@@ -1,4 +1,5 @@
 using UnityEngine;
+using static UnityEngine.CullingGroup;
 
 public class GrowthSystem : MonoBehaviour
 {
@@ -15,6 +16,8 @@ public class GrowthSystem : MonoBehaviour
     public float damageStep = 0.1f;
 
     PlayerStats stats;
+
+    public event System.Action StatsChanged;
 
     void Awake() => stats = GetComponent<PlayerStats>();
 
@@ -40,5 +43,6 @@ public class GrowthSystem : MonoBehaviour
                 case StatType.NormalDamage: stats.AddNormalDamage(damageStep); break;
             }
         }
+        StatsChanged?.Invoke(); 
     }
 }
