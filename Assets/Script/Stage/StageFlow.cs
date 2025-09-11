@@ -2,7 +2,15 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Globalization;
+using System;
 
+/// <summary>
+/// CSVドリブンのステージ進行：
+/// - 敵の出現
+/// - 経路/速度
+/// - 射撃方向/タイミング（従来）
+/// - ★ 弾種とパラメータ（Normal/Beam/Homing）
+/// </summary>
 public class StageFlow : MonoBehaviour
 {
     [Header("▼ CSV (TextAsset)")]
@@ -12,26 +20,36 @@ public class StageFlow : MonoBehaviour
     public GameObject defaultEnemyPrefab;
     public GameObject[] enemyPrefabs;
 
+    // === 新規：敵弾種 ===
+    public enum EnemyBulletType { Normal = 0, Beam = 1, Homing = 2 }
+
     class SpawnEvent
     {
         public float time;
         public GameObject prefab;
         public EnemyMover.MotionPattern pattern;
         public float speed;
-        public List<EnemyMover.Waypoint> path; 
+        public List<EnemyMover.Waypoint> path;
         public FireDirSpec fire;
         public FireTimingSpec timing;
+
+        // ★ 追加：弾スペック
+        public EnemyBulletSpec bulletSpec = new EnemyBulletSpec();
     }
+
 
     readonly List<SpawnEvent> events = new();
     int nextIdx = 0;
     float t;
 
+    // ヘッダ名→列インデックス
+    Dictionary<string, int> header = null;
+
     void Awake()
     {
-        if (!csvFile){ Debug.LogError("[StageFlowCsv] CSV が未設定"); return; }
+        if (!csvFile) { Debug.LogError("[StageFlowCsv] CSV が未設定"); return; }
         ParseCsv(csvFile.text);
-        events.Sort((a,b)=>a.time.CompareTo(b.time));
+        events.Sort((a, b) => a.time.CompareTo(b.time));
     }
 
     void Update()
@@ -42,17 +60,16 @@ public class StageFlow : MonoBehaviour
             var e = events[nextIdx++];
             var go = Instantiate(e.prefab, e.path[0].pos, Quaternion.identity);
 
-            // 経路ムーバー
             var mover = go.GetComponent<EnemyMover>();
             if (!mover) mover = go.AddComponent<EnemyMover>();
             mover.InitPath(e.path, e.pattern, e.speed);
 
-            // 射撃方向（前ターンで実装）
             var shooters = go.GetComponentsInChildren<EnemyShooter>(true);
             foreach (var s in shooters)
             {
                 s.ApplyFireDirection(e.fire);
-                s.ApplyFireTiming(e.timing);    // ★ 追加
+                s.ApplyFireTiming(e.timing);
+                s.ApplyBulletSpec(e.bulletSpec);   // ★ 追加
             }
         }
     }
@@ -71,11 +88,7 @@ public class StageFlow : MonoBehaviour
         for (int i = start; i < lines.Length; i++)
         {
             var cols = lines[i].Split(',');
-            if (cols.Length < 5)
-            {
-                Debug.LogWarning($"CSV 行{i + 1}: 列不足 (need>=5) : {lines[i]}");
-                continue;
-            }
+            if (cols.Length < 5) { Debug.LogWarning($"CSV 行{i + 1}: 列不足"); continue; }
 
             float time = float.Parse(cols[0], inv);
             string id = cols[1].Trim();
@@ -83,19 +96,17 @@ public class StageFlow : MonoBehaviour
             float speed = float.Parse(cols[3], inv);
             string pathRaw = SafeTrimQuotes(cols[4]);
             var path = ParsePath(pathRaw);
-            if (path == null || path.Count < 2)
-            {
-                Debug.LogWarning($"CSV 行{i + 1}: path が不正（最低2点必要）: {cols[4]}");
-                continue;
-            }
+            if (path == null || path.Count < 2) { Debug.LogWarning($"CSV 行{i + 1}: path 不正"); continue; }
 
-            // 既存：射撃方向
             FireDirSpec fire = FireDirSpec.Fixed(Vector2.left);
             if (cols.Length >= 6) fire = ParseShoot(SafeTrimQuotes(cols[5]));
 
-            // ★ 新規：撃つタイミング
             FireTimingSpec timing = FireTimingSpec.Default();
             if (cols.Length >= 7) timing = ParseFireTiming(SafeTrimQuotes(cols[6]));
+
+            // ★ 追加：Bullet Spec（列8）
+            EnemyBulletSpec bulletSpec = new EnemyBulletSpec();
+            if (cols.Length >= 8) bulletSpec = EnemyBulletSpec.FromCsv(SafeTrimQuotes(cols[7]));
 
             events.Add(new SpawnEvent
             {
@@ -105,21 +116,80 @@ public class StageFlow : MonoBehaviour
                 speed = speed,
                 path = path,
                 fire = fire,
-                timing = timing
+                timing = timing,
+                bulletSpec = bulletSpec
             });
         }
     }
 
-    string SafeTrimQuotes(string s) => s.Trim().Trim('"').Trim('\'');
+    // --- CSV utilities ---
+    Dictionary<string, int> BuildHeader(string headerLine)
+    {
+        var cols = SplitCsvLine(headerLine);
+        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < cols.Length; i++)
+        {
+            string key = cols[i].Trim().Trim('"', '\'').ToLowerInvariant();
+            map[key] = i;
+        }
+        return map;
+    }
+
+    string GetCol(string[] cols, string name, int fallbackIndex, bool allowMissing = false)
+    {
+        // ヘッダがあれば名前で、なければインデックスで取得
+        if (header != null && header.TryGetValue(name, out int idx))
+        {
+            if (idx >= 0 && idx < cols.Length) return cols[idx];
+            return string.Empty;
+        }
+        // 旧CSV互換：固定列位置
+        if (fallbackIndex >= 0 && fallbackIndex < cols.Length) return cols[fallbackIndex];
+        return allowMissing ? string.Empty : "";
+    }
+
+    string[] SplitCsvLine(string line)
+    {
+        // シンプルな CSV 分割（ダブルクオート内のカンマに弱いですが既存互換）
+        return line.Split(',');
+    }
+
+    string SafeTrimQuotes(string s) => (s ?? string.Empty).Trim().Trim('"').Trim('\'');
+
+    float ParseFloat(string s, float def, IFormatProvider inv)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return def;
+        return float.TryParse(s, NumberStyles.Float, inv, out var v) ? v : def;
+    }
+
+    int ParseInt(string s, int def, IFormatProvider inv)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return def;
+        return int.TryParse(s, NumberStyles.Integer, inv, out var v) ? v : def;
+    }
 
     EnemyMover.MotionPattern ParsePattern(string s)
     {
-        return s.ToLower() switch {
-            "linear"        => EnemyMover.MotionPattern.Linear,
-            "smooth"        => EnemyMover.MotionPattern.SmoothSpline,
-            "smoothspline"  => EnemyMover.MotionPattern.SmoothSpline,
-            "arrive"        => EnemyMover.MotionPattern.Arrive,
+        return s.ToLower() switch
+        {
+            "linear" => EnemyMover.MotionPattern.Linear,
+            "smooth" => EnemyMover.MotionPattern.SmoothSpline,
+            "smoothspline" => EnemyMover.MotionPattern.SmoothSpline,
+            "arrive" => EnemyMover.MotionPattern.Arrive,
             _ => EnemyMover.MotionPattern.Linear,
+        };
+    }
+
+    EnemyBulletType ParseBulletType(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return EnemyBulletType.Normal;
+        string s = raw.Trim().ToLowerInvariant();
+        return s switch
+        {
+            "beam" => EnemyBulletType.Beam,
+            "homing" => EnemyBulletType.Homing,
+            "normal" => EnemyBulletType.Normal,
+            _ => EnemyBulletType.Normal
         };
     }
 
@@ -172,14 +242,11 @@ public class StageFlow : MonoBehaviour
         // 形式1'') every=0.8;delay=0.3 …セパレータに ; を使用（CSV 的に扱いやすい）
         if (s.StartsWith("every") || s.StartsWith("interval"))
         {
-            // every=0.8@0.3 / every=0.8;delay=0.3 両対応
-            // まず "every=" or "interval=" を除去
             int eq = s.IndexOf('=');
             string rest = (eq >= 0) ? s.Substring(eq + 1) : s;
 
             float interval = 0f, delay = 0f;
 
-            // "@delay" 形式
             var atParts = rest.Split('@');
             if (atParts.Length >= 1)
             {
@@ -188,7 +255,6 @@ public class StageFlow : MonoBehaviour
                     float.TryParse(atParts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out delay);
             }
 
-            // ";delay=" 形式も上書き対応
             var semi = rest.Split(';');
             foreach (var token in semi)
             {
@@ -234,11 +300,9 @@ public class StageFlow : MonoBehaviour
         var segs = raw.Split('|');
         foreach (var s in segs)
         {
-            // 各点の左右空白と括弧/引用符を除去
             var p = s.Trim().Trim('(', ')', '"', '\'');
             if (string.IsNullOrEmpty(p)) continue;
 
-            // "@wait" を切り出し
             float wait = 0f;
             string xyPart = p;
             int at = p.LastIndexOf('@');
@@ -250,7 +314,6 @@ public class StageFlow : MonoBehaviour
                 wait = Mathf.Max(0f, wait);
             }
 
-            // 座標は "~" 優先、":" 互換
             string[] xy = xyPart.Split('~');
             if (xy.Length != 2) xy = xyPart.Split(':');
             if (xy.Length != 2) continue;
@@ -267,7 +330,7 @@ public class StageFlow : MonoBehaviour
     GameObject FindPrefab(string id)
     {
         var p = enemyPrefabs.FirstOrDefault(e => e && e.name == id);
-        if (!p){ Debug.LogWarning($"[StageFlowCsv] id '{id}' 未登録 → default 使用"); p = defaultEnemyPrefab; }
+        if (!p) { Debug.LogWarning($"[StageFlowCsv] id '{id}' 未登録 → default 使用"); p = defaultEnemyPrefab; }
         return p;
     }
 }

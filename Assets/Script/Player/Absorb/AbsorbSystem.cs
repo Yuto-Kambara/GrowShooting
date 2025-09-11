@@ -15,17 +15,7 @@ public class AbsorbSystem : MonoBehaviour
         bulletMask = 1 << LayerMask.NameToLayer("EnemyBullet");
     }
 
-    //========= ‡@ ‹zŽûƒŠƒ“ƒOF’e–{‘Ì‚ªG‚ê‚½‚ç]—ˆ’Ê‚è‹zŽû =========
-    void OnTriggerEnter2D(Collider2D other)
-    {
-        if (other.gameObject.layer == LayerMask.NameToLayer("EnemyBullet"))
-        {
-            other.gameObject.SetActive(false);      // ’e‚ðÁ‚·
-            growth?.OnEnergyAbsorbed(1);            // ¬’· 1 ”­‚Ô‚ñ
-        }
-    }
-
-    //========= ‡A pullRadius “à‚É“ü‚Á‚½’e‚©‚ç EnergyOrb ‚ðo‚· =========
+    //========= pullRadius “à‚É“ü‚Á‚½’e‚©‚ç EnergyOrb ‚ðo‚· =========
     void Update()
     {
         // ‹ß‚­‚Ì“G’e‚ðŒŸ’mi’e‚Í“®‚©‚³‚È‚¢Ij

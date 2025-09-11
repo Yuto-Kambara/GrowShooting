@@ -7,6 +7,8 @@ public class PoolManager : MonoBehaviour
     public ObjectPool NormalBulletPool;
     public ObjectPool ChargeBulletPool;
     public ObjectPool enemyBulletPool;
+    public ObjectPool BeamBulletPool;
+    public ObjectPool HomingBulletPool;
 
     void Awake()
     {
