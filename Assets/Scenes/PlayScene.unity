@@ -714,9 +714,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 28ce265914dd8414f844e25ff97d6115, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  pullRadius: 5
+  pullRadius: 1
   energyPrefab: {fileID: 4297225946948259614, guid: a12dbf6d68d4faa4d90e41c80b4f5a7f, type: 3}
   energySpeed: 8
+  spawnInterval: 1
+  spawnOnEnter: 1
+  maxPerBullet: 0
 --- !u!58 &289959081
 CircleCollider2D:
   m_ObjectHideFlags: 0
@@ -3344,7 +3347,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: -6.7, y: -0.26, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.2, y: 0.2, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2110872980}

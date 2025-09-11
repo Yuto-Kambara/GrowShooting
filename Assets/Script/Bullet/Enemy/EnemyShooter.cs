@@ -149,10 +149,14 @@ public class EnemyShooter : MonoBehaviour
         if (b)
         {
             if (bulletSpec.damage > 0) b.damage = Mathf.RoundToInt(bulletSpec.damage);
-            if (bulletSpec.sizeMul != 1f) go.transform.localScale *= bulletSpec.sizeMul;
+
+            // ここを「 *= 」ではなく、SetSizeMul に変更（累積防止）
+            b.SetSizeMul(bulletSpec.sizeMul);   // ★ 修正ポイント
+
             b.dir = dir;
         }
     }
+
 
     void FireBeam(Vector2 dir)
     {
