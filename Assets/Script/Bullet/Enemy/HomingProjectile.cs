@@ -28,6 +28,10 @@ public class HomingProjectile : MonoBehaviour
     public float lockZ = 0f;          // Zを固定（背景の後ろに潜るのを防止）
     public float sizeMul = 1f;        // 見た目スケール倍率（CSVから上書き）
 
+    [Header("Sprite Facing")]         // NEW: 見た目の向き調整
+    [Tooltip("スプライト基準が右向きでない場合の補正角（度）。例：上向き基準なら +90。")]
+    public float spriteAngleOffsetDeg = 0f; // NEW
+
     // 内部
     Transform target;
     float tLife;
@@ -49,6 +53,8 @@ public class HomingProjectile : MonoBehaviour
 
         // Z固定（描画順の安定化）
         var pos = transform.position; pos.z = lockZ; transform.position = pos;
+
+        AlignSpriteToDir(); // NEW: 起動時にも向き合わせ
     }
 
     /// <summary>EnemyShooter からの初期化</summary>
@@ -63,6 +69,8 @@ public class HomingProjectile : MonoBehaviour
         maxHomingTime = Mathf.Max(0.1f, maxT);
         life = Mathf.Max(maxHomingTime, lifeSeconds); // 追尾終了後も少しは飛び続けられるよう、最低でもmaxHomingTime
         transform.localScale = Vector3.one * sizeMul;
+
+        AlignSpriteToDir(); // NEW: 初期化直後も向き合わせ
     }
 
     void Update()
@@ -96,22 +104,34 @@ public class HomingProjectile : MonoBehaviour
             }
         }
 
+        // NEW: 進行方向にスプライトを向ける
+        AlignSpriteToDir();
+
         // --- 移動（Bullet と同じく Translate World） ---
         transform.Translate(dir.normalized * speed * Time.deltaTime, Space.World);
 
-        // Z を固定（カメラ・パララックスでズレても毎フレーム矯正）
+        // Z を固定
         var pos = transform.position; pos.z = lockZ; transform.position = pos;
 
-        // --- 寿命（Bullet 同様） ---
+        // --- 寿命 ---
         tLife += Time.deltaTime;
         if (tLife > life) gameObject.SetActive(false);
     }
 
+    // NEW: dir の向きにスプライトを回す（右向き基準）
+    void AlignSpriteToDir()
+    {
+        if (dir.sqrMagnitude < 1e-8f) return;
+        float ang = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg + spriteAngleOffsetDeg;
+        transform.rotation = Quaternion.Euler(0f, 0f, ang);
+    }
+
     void OnTriggerEnter2D(Collider2D other)
     {
-        // Bullet と同じ当たり方
+        // Bullet と同じ当たり方（Health API 名はあなたの実装に合わせて）
         if (gameObject.layer == LayerMask.NameToLayer("EnemyBullet") && other.CompareTag("Player"))
         {
+            // 例: other.GetComponent<Health>()?.Take(damage);
             other.GetComponent<Health>()?.Take(damage);
             gameObject.SetActive(false);
         }
