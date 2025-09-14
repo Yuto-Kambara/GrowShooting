@@ -1,5 +1,6 @@
-﻿time,id,pattern,speed,path,shot,shotTiming,bulletSpec
-0.3,SmallEnemy,SmoothSpline,10,( 0:-7 |  0:-4@5 | -4:5 | -4:-5 |  0:7 ),deg=180,every=2,"""bullet=homing;damage=1;size=1.3;speed=3;turn=800;near=2.0;break=5.0;maxTime=2.5"""
-0.7,SmallEnemy,SmoothSpline,10,"""( 0:-7 |  0:-4 | -4:5@5 | -4:-5 |  0:7 )""",player,every=2,"""bullet=homing;damage=1;size=1.3;speed=3;turn=800;near=2.0;break=5.0;maxTime=2.5"""
-1.1,SmallEnemy,SmoothSpline,10,"""( 0:-7 | -4:5 | -4:-5@5 |  0:4 )""",forward,every=2,"""bullet=homing;damage=1;size=1.3;speed=3;turn=800;near=2.0;break=5.0;maxTime=2.5"""
-1.5,SmallEnemy,SmoothSpline,10,"""( 0:-7 | -4:5 | -4:-5 |  0:4 )""",vec = 0~1,every=2,"""bullet=homing;damage=1;size=1.3;speed=3;turn=800;near=2.0;break=5.0;maxTime=2.5"""
+﻿time,id,pattern,speed,path,shot,shotTiming,bulletSpec,boss
+0.3,SmallEnemy,SmoothSpline,10,( 0:-7 |  0:-4@5 | -4:5 | -4:-5 |  0:7 ),deg=180,every=2,"""bullet=homing;damage=1;size=1.3;speed=3;turn=800;near=2.0;break=5.0;maxTime=2.5""",
+0.7,SmallEnemy,SmoothSpline,10,"""( 0:-7 |  0:-4 | -4:5@5 | -4:-5 |  0:7 )""",player,every=2,"""bullet=homing;damage=1;size=1.3;speed=3;turn=800;near=2.0;break=5.0;maxTime=2.5""",
+1.1,SmallEnemy,SmoothSpline,10,"""( 0:-7 | -4:5 | -4:-5@5 |  0:4 )""",forward,every=2,"""bullet=homing;damage=1;size=1.3;speed=3;turn=800;near=2.0;break=5.0;maxTime=2.5""",
+1.5,SmallEnemy,SmoothSpline,10,"""( 0:-7 | -4:5 | -4:-5 |  0:4 )""",vec = 0~1,every=2,"""bullet=homing;damage=1;size=1.3;speed=3;turn=800;near=2.0;break=5.0;maxTime=2.5""",
+2,MidBoss,SmoothSpline,10,( 0:-7 |  0:-4@5 | -4:5 | -4:-5 |  0:7 ),,,,mid
