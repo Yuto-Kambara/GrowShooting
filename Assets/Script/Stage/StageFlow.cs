@@ -1,23 +1,9 @@
-﻿using UnityEngine;
+﻿// Assets/Scripts/Stage/StageFlow.cs
+using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 using System.Globalization;
-using System;
 
-/// <summary>
-/// CSVドリブンのステージ進行：
-/// - 敵の出現
-/// - 経路/速度
-/// - 射撃方向/タイミング
-/// - 弾種とパラメータ（Normal/Beam/Homing）
-/// - ★ Boss対応：boss列（mid/final）で中ボス/大ボス出現 → スクロール停止 & BGM切替（BossMarker経由）
-///
-/// 期待CSV（後方互換・ヘッダ任意）:
-/// time,id,pattern,speed,path,shoot,timing,bulletSpec,boss
-/// 例:
-/// 45.0,MidBoss01,arrive,0,"(12~0|8~0)",player,,,"mid"
-/// 90.0,FinalBoss01,arrive,0,"(12~0|8~0)",player,,,"final"
-/// </summary>
 public class StageFlow : MonoBehaviour
 {
     [Header("▼ CSV (TextAsset)")]
@@ -27,241 +13,217 @@ public class StageFlow : MonoBehaviour
     public GameObject defaultEnemyPrefab;
     public GameObject[] enemyPrefabs;
 
-    // ==== 内部型 ====
+    [Header("Boss Spawn Defaults")]
+    [Tooltip("CSVにpathが無いボス行のスポーン既定座標")]
+    public Vector2 defaultBossSpawn = new Vector2(12f, 0f);
+
     enum SpawnKind { Normal, MidBoss, FinalBoss }
 
     class SpawnEvent
     {
         public float time;
+        public SpawnKind kind;
+
         public GameObject prefab;
+
+        // --- 通常敵のみ使用 ---
         public EnemyMover.MotionPattern pattern;
         public float speed;
         public List<EnemyMover.Waypoint> path;
+
+        // --- 共通（射撃）---
         public FireDirSpec fire;
         public FireTimingSpec timing;
+        public EnemyBulletSpec bulletSpec;
 
-        // 弾種スペック（Normal/Beam/Homing）
-        public EnemyBulletSpec bulletSpec = new EnemyBulletSpec();
-
-        // Boss種別
-        public SpawnKind kind = SpawnKind.Normal;
+        // --- ボス用（移動はプレハブの Mover に委譲）---
+        public Vector2? bossSpawnPos; // null の場合は defaultBossSpawn
     }
 
-    // ==== ランタイム ====
     readonly List<SpawnEvent> events = new();
     int nextIdx = 0;
     float t;
 
-    // ボス中は通常湧きを止める
-    bool pausedByBoss = false;
+    bool pausedByBoss; // BossManager から制御
+    public void SetPausedByBoss(bool v) => pausedByBoss = v;
 
-    // ヘッダ名→列インデックス（ヘッダ無しCSVも後方互換で読める）
-    Dictionary<string, int> header = null;
-
-    // ==== ライフサイクル ====
     void Awake()
     {
-        if (!csvFile) { Debug.LogError("[StageFlowCsv] CSV が未設定"); return; }
+        if (!csvFile) { Debug.LogError("[StageFlow] CSV が未設定"); return; }
         ParseCsv(csvFile.text);
         events.Sort((a, b) => a.time.CompareTo(b.time));
-    }
-
-    void OnEnable()
-    {
-        // 途中から再開できるように初期化
-        t = 0f; nextIdx = 0;
-        pausedByBoss = false;
     }
 
     void Update()
     {
         t += Time.deltaTime;
 
-        // 経過時間に応じてイベントを消化
         while (nextIdx < events.Count && t >= events[nextIdx].time)
         {
             var e = events[nextIdx];
 
-            // ボス中は「通常敵」の出現を止める（ボスイベントは通す）
+            // ボス中は通常敵の出現を停止（ボス自身の行は通す）
             if (pausedByBoss && e.kind == SpawnKind.Normal) break;
 
             nextIdx++;
 
-            // 出現
-            var go = Instantiate(e.prefab, e.path[0].pos, Quaternion.identity);
+            // --- 生成位置 ---
+            Vector3 spawnPos;
+            if (e.kind == SpawnKind.Normal)
+            {
+                // 通常敵：path の先頭
+                spawnPos = (e.path != null && e.path.Count > 0) ? (Vector3)e.path[0].pos : Vector3.zero;
+            }
+            else
+            {
+                // ボス：pathは使わず、bossSpawnPos -> default
+                Vector2 p = e.bossSpawnPos ?? defaultBossSpawn;
+                spawnPos = new Vector3(p.x, p.y, 0f);
+            }
 
-            // 経路ムーバー
-            var mover = go.GetComponent<EnemyMover>();
-            if (!mover) mover = go.AddComponent<EnemyMover>();
-            mover.InitPath(e.path, e.pattern, e.speed);
+            var go = Instantiate(e.prefab, spawnPos, Quaternion.identity);
 
-            // 射撃（子に EnemyShooter があれば適用）
+            // --- 移動の割当 ---
+            if (e.kind == SpawnKind.Normal)
+            {
+                var mover = go.GetComponent<EnemyMover>();
+                if (!mover) mover = go.AddComponent<EnemyMover>();
+                mover.InitPath(e.path, e.pattern, e.speed);
+            }
+            else
+            {
+                // ボス：Moverはプレハブに付いている MidBossMover/FinalBossMover に任せる
+                // ここでは何もしない
+            }
+
+            // --- 射撃設定は共通 ---
             var shooters = go.GetComponentsInChildren<EnemyShooter>(true);
-            foreach (var s in shooters)
+            if (e.kind == SpawnKind.Normal)
             {
-                s.ApplyFireDirection(e.fire);
-                s.ApplyFireTiming(e.timing);
-                s.ApplyBulletSpec(e.bulletSpec);
+                foreach (var s in shooters)
+                {
+                    s.ApplyFireDirection(e.fire);
+                    s.ApplyFireTiming(e.timing);
+                    s.ApplyBulletSpec(e.bulletSpec);
+                }
             }
 
-            // Bossなら印を付与（BossMarker が無ければ付ける）
+            // --- ボス行なら、StageFlowを一時停止（通常敵停止） ---
             if (e.kind == SpawnKind.MidBoss || e.kind == SpawnKind.FinalBoss)
-            {
-                var marker = go.GetComponent<BossMarker>();
-                if (!marker) marker = go.AddComponent<BossMarker>();
-                marker.bossType = (e.kind == SpawnKind.MidBoss) ? BossType.Mid : BossType.Final;
-
-                // ステージ側もロック（以後、通常湧きは停止）
                 SetPausedByBoss(true);
-                // BGM切替/スクロール停止は BossMarker.OnEnable → BossManager.BeginBoss にて実行
-            }
         }
     }
 
-    // ==== 外部API（BossManagerからも呼べるように） ====
-    public void SetPausedByBoss(bool v) => pausedByBoss = v;
-
-    // ==== CSV 解析 ====
+    // ----------------- CSV 解析 -----------------
     void ParseCsv(string text)
     {
-        var rawLines = text.Split('\n');
-        var lines = rawLines
-            .Select(l => l.Trim())
-            .Where(l => !string.IsNullOrEmpty(l) && !l.StartsWith("#"))
-            .ToArray();
+        var lines = text.Split('\n')
+                        .Select(l => l.Trim())
+                        .Where(l => !string.IsNullOrEmpty(l) && !l.StartsWith("#"))
+                        .ToArray();
 
-        if (lines.Length == 0) { Debug.LogWarning("[StageFlowCsv] 空CSV"); return; }
-
-        // ヘッダ判定（1行目に time 等の語が含まれていればヘッダとみなす）
-        int startIndex = 0;
-        if (lines[0].IndexOf("time", StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            header = BuildHeader(lines[0]);
-            startIndex = 1;
-        }
+        // 既定の列並び: time,id,pattern,speed,path,shoot,timing,bulletSpec,boss
+        int start = lines[0].StartsWith("time") ? 1 : 0;
         var inv = CultureInfo.InvariantCulture;
 
-        for (int i = startIndex; i < lines.Length; i++)
+        for (int i = start; i < lines.Length; i++)
         {
-            var cols = SplitCsvLine(lines[i]);
-
-            // time
-            string timeStr = GetCol(cols, "time", 0, allowMissing: false);
-            if (!float.TryParse(timeStr, NumberStyles.Float, inv, out float time))
+            var cols = lines[i].Split(',');
+            if (cols.Length < 2)
             {
-                Debug.LogWarning($"CSV 行{i + 1}: time が不正: '{timeStr}'");
+                Debug.LogWarning($"CSV 行{i + 1}: 最低限の列不足 : {lines[i]}");
                 continue;
             }
 
-            // id → prefab
-            string id = SafeTrimQuotes(GetCol(cols, "id", 1, allowMissing: false));
-            var prefab = FindPrefab(id);
-
-            // pattern
-            string patStr = SafeTrimQuotes(GetCol(cols, "pattern", 2, allowMissing: true));
-            var pattern = ParsePattern(patStr);
-
-            // speed
-            string spdStr = SafeTrimQuotes(GetCol(cols, "speed", 3, allowMissing: true));
-            float speed = ParseFloat(spdStr, 0f, inv);
-
-            // path
-            string pathRaw = SafeTrimQuotes(GetCol(cols, "path", 4, allowMissing: false));
-            var path = ParsePath(pathRaw);
-            if (path == null || path.Count < 1)
+            // time / id
+            if (!float.TryParse(cols[0], NumberStyles.Float, inv, out float time))
             {
-                Debug.LogWarning($"CSV 行{i + 1}: path 不正: '{pathRaw}'");
+                Debug.LogWarning($"CSV 行{i + 1}: time が不正 : {cols[0]}");
                 continue;
             }
+            string id = cols[1].Trim();
 
-            // shoot
-            FireDirSpec fire = FireDirSpec.Fixed(Vector2.left);
-            if (HasCol(cols, "shoot", 5))
-                fire = ParseShoot(SafeTrimQuotes(GetCol(cols, "shoot", 5, allowMissing: true)));
-
-            // timing
-            FireTimingSpec timing = FireTimingSpec.Default();
-            if (HasCol(cols, "timing", 6))
-                timing = ParseFireTiming(SafeTrimQuotes(GetCol(cols, "timing", 6, allowMissing: true)));
-
-            // bulletSpec
-            EnemyBulletSpec bulletSpec = new EnemyBulletSpec();
-            if (HasCol(cols, "bulletspec", 7))
-                bulletSpec = EnemyBulletSpec.FromCsv(SafeTrimQuotes(GetCol(cols, "bulletspec", 7, allowMissing: true)));
-
-            // boss
+            // boss 列（最後の列を想定。ただし柔軟に見に行く）
             SpawnKind kind = SpawnKind.Normal;
-            if (HasCol(cols, "boss", 8))
+            if (cols.Length >= 9)
             {
-                string b = SafeTrimQuotes(GetCol(cols, "boss", 8, allowMissing: true)).ToLowerInvariant();
-                if (b == "mid" || b == "midboss" || b == "mid-boss") kind = SpawnKind.MidBoss;
-                else if (b == "final" || b == "boss" || b == "last" || b == "finalboss") kind = SpawnKind.FinalBoss;
+                string bossRaw = SafeTrimQuotes(cols[8]).ToLower();
+                kind = ParseBossKind(bossRaw);
+            }
+            else if (cols.Length >= 1)
+            {
+                // 後方互換：もし8列目以外に入っていても拾いたければここで拡張可能
+            }
+
+            // 共通：射撃
+            FireDirSpec fire = FireDirSpec.Fixed(Vector2.left);
+            if (cols.Length >= 6) fire = ParseShoot(SafeTrimQuotes(cols[5]));
+
+            FireTimingSpec timing = FireTimingSpec.Default();
+            if (cols.Length >= 7) timing = ParseFireTiming(SafeTrimQuotes(cols[6]));
+
+            EnemyBulletSpec bulletSpec = new EnemyBulletSpec();
+            if (cols.Length >= 8) bulletSpec = EnemyBulletSpec.FromCsv(SafeTrimQuotes(cols[7]));
+
+            // 通常敵用：動き（pattern/speed/path）
+            EnemyMover.MotionPattern pattern = EnemyMover.MotionPattern.Linear;
+            float speed = 2f;
+            List<EnemyMover.Waypoint> path = null;
+
+            // ボス用：スポーン座標（pathの先頭を位置取りにだけ使う。無ければ既定値）
+            Vector2? bossSpawn = null;
+
+            if (kind == SpawnKind.Normal)
+            {
+                if (cols.Length >= 3) pattern = ParsePattern(cols[2].Trim());
+                if (cols.Length >= 4 && float.TryParse(cols[3], NumberStyles.Float, inv, out float sp)) speed = sp;
+                if (cols.Length >= 5) path = ParsePath(SafeTrimQuotes(cols[4]));
+                if (path == null || path.Count < 2)
+                {
+                    Debug.LogWarning($"CSV 行{i + 1}: path が不正（最低2点必要）: {(cols.Length >= 5 ? cols[4] : "")}");
+                    continue;
+                }
+            }
+            else
+            {
+                // ボス：動きはCSVを撤廃。pathがあればスポーン位置だけ拾う
+                if (cols.Length >= 5)
+                {
+                    var tmp = ParsePath(SafeTrimQuotes(cols[4]));
+                    if (tmp != null && tmp.Count > 0) bossSpawn = tmp[0].pos;
+                }
             }
 
             events.Add(new SpawnEvent
             {
                 time = time,
-                prefab = prefab,
+                kind = kind,
+                prefab = FindPrefab(id),
                 pattern = pattern,
                 speed = speed,
                 path = path,
                 fire = fire,
                 timing = timing,
                 bulletSpec = bulletSpec,
-                kind = kind
+                bossSpawnPos = bossSpawn
             });
         }
     }
 
-    // ==== CSV utils ====
-    Dictionary<string, int> BuildHeader(string headerLine)
-    {
-        var cols = SplitCsvLine(headerLine);
-        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < cols.Length; i++)
-        {
-            string key = cols[i].Trim().Trim('"', '\'').ToLowerInvariant();
-            if (!string.IsNullOrEmpty(key)) map[key] = i;
-        }
-        return map;
-    }
+    string SafeTrimQuotes(string s) => s.Trim().Trim('"').Trim('\'');
 
-    bool HasCol(string[] cols, string name, int fallbackIndex)
+    SpawnKind ParseBossKind(string s)
     {
-        if (header != null && header.TryGetValue(name, out int idx))
-            return idx >= 0 && idx < cols.Length;
-        return fallbackIndex >= 0 && fallbackIndex < cols.Length;
-    }
-
-    string GetCol(string[] cols, string name, int fallbackIndex, bool allowMissing)
-    {
-        if (header != null && header.TryGetValue(name, out int idx))
-        {
-            if (idx >= 0 && idx < cols.Length) return cols[idx];
-            return allowMissing ? string.Empty : "";
-        }
-        if (fallbackIndex >= 0 && fallbackIndex < cols.Length) return cols[fallbackIndex];
-        return allowMissing ? string.Empty : "";
-    }
-
-    string[] SplitCsvLine(string line)
-    {
-        // シンプルなCSV分割：ダブルクオート含む複雑ケースが必要なら差し替え
-        return line.Split(',');
-    }
-
-    string SafeTrimQuotes(string s) => (s ?? string.Empty).Trim().Trim('"').Trim('\'');
-
-    float ParseFloat(string s, float def, IFormatProvider inv)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return def;
-        return float.TryParse(s, NumberStyles.Float, inv, out var v) ? v : def;
+        s = s?.Trim().ToLower();
+        if (string.IsNullOrEmpty(s)) return SpawnKind.Normal;
+        if (s == "mid" || s == "midboss" || s == "mid-boss") return SpawnKind.MidBoss;
+        if (s == "final" || s == "boss" || s == "last" || s == "finalboss") return SpawnKind.FinalBoss;
+        return SpawnKind.Normal;
     }
 
     EnemyMover.MotionPattern ParsePattern(string s)
     {
-        s = (s ?? "").ToLowerInvariant();
-        return s switch
+        return s.ToLower() switch
         {
             "linear" => EnemyMover.MotionPattern.Linear,
             "smooth" => EnemyMover.MotionPattern.SmoothSpline,
@@ -275,12 +237,10 @@ public class StageFlow : MonoBehaviour
     {
         if (string.IsNullOrWhiteSpace(raw)) return FireDirSpec.Fixed(Vector2.left);
 
-        var s = raw.Trim().ToLowerInvariant();
+        var s = raw.Trim().ToLower();
 
-        // 1) player
         if (s == "player" || s == "atplayer") return FireDirSpec.AtPlayer();
 
-        // 2) deg=xxx / deg:xxx
         if (s.StartsWith("deg"))
         {
             var parts = s.Split('=', ':');
@@ -292,10 +252,9 @@ public class StageFlow : MonoBehaviour
             }
         }
 
-        // 3) vec=dx~dy / dx~dy
         if (s.StartsWith("vec=")) s = s.Substring(4);
         var xy = s.Split('~');
-        if (xy.Length != 2) xy = s.Split(':'); // 互換
+        if (xy.Length != 2) xy = s.Split(':');
         if (xy.Length == 2 &&
             float.TryParse(xy[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) &&
             float.TryParse(xy[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
@@ -303,7 +262,7 @@ public class StageFlow : MonoBehaviour
             return FireDirSpec.Fixed(new Vector2(x, y));
         }
 
-        Debug.LogWarning($"[StageFlowCsv] shoot='{raw}' を解釈できません。leftにフォールバック");
+        Debug.LogWarning($"[StageFlow] shoot='{raw}' を解釈できません。leftにフォールバック");
         return FireDirSpec.Fixed(Vector2.left);
     }
 
@@ -311,18 +270,14 @@ public class StageFlow : MonoBehaviour
     {
         if (string.IsNullOrWhiteSpace(raw)) return FireTimingSpec.Default();
 
-        string s = raw.Trim().ToLowerInvariant();
+        string s = raw.Trim().ToLower();
 
-        // 形式1) every=0.8            …等間隔発射（0.8 秒ごと）
-        // 形式1') every=0.8@0.3        …開始遅延 0.3 秒つき
-        // 形式1'') every=0.8;delay=0.3 …CSV向け
         if (s.StartsWith("every") || s.StartsWith("interval"))
         {
             int eq = s.IndexOf('=');
             string rest = (eq >= 0) ? s.Substring(eq + 1) : s;
 
             float interval = 0f, delay = 0f;
-
             var atParts = rest.Split('@');
             if (atParts.Length >= 1)
             {
@@ -330,7 +285,6 @@ public class StageFlow : MonoBehaviour
                 if (atParts.Length >= 2)
                     float.TryParse(atParts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out delay);
             }
-
             var semi = rest.Split(';');
             foreach (var token in semi)
             {
@@ -338,14 +292,11 @@ public class StageFlow : MonoBehaviour
                 if (kv.Length == 2 && kv[0].Trim() == "delay")
                     float.TryParse(kv[1], NumberStyles.Float, CultureInfo.InvariantCulture, out delay);
             }
-
             interval = Mathf.Max(0.01f, interval);
             delay = Mathf.Max(0f, delay);
             return FireTimingSpec.Every(interval, delay);
         }
 
-        // 形式2) times=(0.5|1.2|3.0)  / times=0.5|1.2|3
-        // 形式2') t=0.4|0.6|1.0       / (0.4|0.6|1.0)
         if (s.StartsWith("times=") || s.StartsWith("t=") || s.StartsWith("("))
         {
             int eq = s.IndexOf('=');
@@ -363,7 +314,7 @@ public class StageFlow : MonoBehaviour
             return FireTimingSpec.Timeline(times);
         }
 
-        Debug.LogWarning($"[StageFlowCsv] fireTiming '{raw}' を解釈できません（既定にフォールバック）");
+        Debug.LogWarning($"[StageFlow] fireTiming '{raw}' を解釈できません（既定にフォールバック）");
         return FireTimingSpec.Default();
     }
 
@@ -376,11 +327,9 @@ public class StageFlow : MonoBehaviour
         var segs = raw.Split('|');
         foreach (var s in segs)
         {
-            // 各点の括弧/引用符を除去
             var p = s.Trim().Trim('(', ')', '"', '\'');
             if (string.IsNullOrEmpty(p)) continue;
 
-            // "@wait" を切り出し（省略可）
             float wait = 0f;
             string xyPart = p;
             int at = p.LastIndexOf('@');
@@ -392,7 +341,6 @@ public class StageFlow : MonoBehaviour
                 wait = Mathf.Max(0f, wait);
             }
 
-            // "~" 優先、":" 互換
             string[] xy = xyPart.Split('~');
             if (xy.Length != 2) xy = xyPart.Split(':');
             if (xy.Length != 2) continue;
@@ -403,19 +351,13 @@ public class StageFlow : MonoBehaviour
                 pts.Add(new EnemyMover.Waypoint(new Vector3(x, y, 0f), wait));
             }
         }
-        // 経路が1点のみでも最低限動作（出現位置=最初の点）
-        if (pts.Count == 0) pts.Add(new EnemyMover.Waypoint(Vector3.zero, 0f));
         return pts;
     }
 
     GameObject FindPrefab(string id)
     {
         var p = enemyPrefabs.FirstOrDefault(e => e && e.name == id);
-        if (!p)
-        {
-            Debug.LogWarning($"[StageFlowCsv] id '{id}' 未登録 → default 使用");
-            p = defaultEnemyPrefab;
-        }
+        if (!p) { Debug.LogWarning($"[StageFlow] id '{id}' 未登録 → default 使用"); p = defaultEnemyPrefab; }
         return p;
     }
 }
