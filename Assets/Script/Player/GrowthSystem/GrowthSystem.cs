@@ -5,7 +5,7 @@ public class GrowthSystem : MonoBehaviour
 {
     public enum StatType { MaxHP, Regen, Speed, ChargePower, NormalDamage }
 
-    [Header("選択中（Cで巡回）")]
+    [Header("選択中（C/Eで右、Qで左に巡回）")]
     public StatType selected = StatType.MaxHP;
 
     [Header("吸収1発あたりの増分")]
@@ -23,10 +23,29 @@ public class GrowthSystem : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.C))
+        // 右回り：E（新規）／C（互換）
+        if (Input.GetKeyDown(KeyCode.Q))
         {
-            selected = (StatType)(((int)selected + 1) % System.Enum.GetValues(typeof(StatType)).Length);
+            SelectNext();
         }
+        // 左回り：Q（新規）
+        else if (Input.GetKeyDown(KeyCode.E))
+        {
+            SelectPrev();
+        }
+    }
+
+    // ---- 公開API：外部（UIなど）からも呼べるように ----
+    public void SelectNext()
+    {
+        int n = System.Enum.GetValues(typeof(StatType)).Length;
+        selected = (StatType)(((int)selected + 1) % n);
+    }
+
+    public void SelectPrev()
+    {
+        int n = System.Enum.GetValues(typeof(StatType)).Length;
+        selected = (StatType)(((int)selected - 1 + n) % n);
     }
 
     public void OnEnergyAbsorbed(int count = 1)
@@ -43,6 +62,6 @@ public class GrowthSystem : MonoBehaviour
                 case StatType.NormalDamage: stats.AddNormalDamage(damageStep); break;
             }
         }
-        StatsChanged?.Invoke(); 
+        StatsChanged?.Invoke();
     }
 }

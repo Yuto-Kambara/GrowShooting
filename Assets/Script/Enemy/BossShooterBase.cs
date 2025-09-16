@@ -28,13 +28,6 @@ public abstract class BossShooterBase : MonoBehaviour
 
         // 各ボス固有のコルーチン開始（派生クラスで実装）
         StartCoroutine(MainRoutine());
-        // BossShooterBase.OnEnable の最後あたりに追加
-        if (shooters == null || shooters.Length == 0)
-        {
-            Debug.LogWarning($"[BossShooterBase] 子階層に EnemyShooter が見つかりません（{name}）。" +
-                             "ボスの子に発射口(EnemyShooter)を配置してください。", this);
-        }
-        Debug.Log("aaaaaaaaaaaaaaaaaaaa");
 
     }
 
