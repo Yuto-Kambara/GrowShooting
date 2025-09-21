@@ -150,8 +150,19 @@ public class EnemyShooter : MonoBehaviour
         {
             if (bulletSpec.damage > 0) b.damage = Mathf.RoundToInt(bulletSpec.damage);
 
-            // ここを「 *= 」ではなく、SetSizeMul に変更（累積防止）
-            b.SetSizeMul(bulletSpec.sizeMul);   // ★ 修正ポイント
+            // サイズは上書き（累積しない）
+            b.SetSizeMul(bulletSpec.sizeMul);
+
+            // ★ 追加: 通常弾スピードの上書き（正の値のみ）
+            if (bulletSpec.normalSpeed > 0f)
+            {
+                // Bullet 側の API に合わせてどちらかを使用してください
+                // 1) フィールド公開なら:
+                b.speed = bulletSpec.normalSpeed;
+
+                // 2) セッター関数があるなら:
+                // b.SetSpeed(bulletSpec.normalSpeed);
+            }
 
             b.dir = dir;
         }

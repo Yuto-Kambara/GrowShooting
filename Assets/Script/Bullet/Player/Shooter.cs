@@ -14,6 +14,7 @@ public class Shooter : MonoBehaviour
     public float chargeMaxTime = 2.5f;     // ここまでホールドで上限到達
     public AnimationCurve chargeCurve;     // 0→1成長カーブ（未設定なら線形）
     public float previewOffset = 0.2f;     // 自機前の表示距離
+    [Min(0.01f)] public float chargeStartSizeMul = 0.3f;  // ★ 追加：初期サイズ倍率（Inspectorで指定）
 
     [Header("Caps (Base)")]
     public float baseChargeMaxSizeMul = 1.0f;   // サイズ上限（基準スケール×これ）
@@ -33,7 +34,7 @@ public class Shooter : MonoBehaviour
     float normalCd;
     bool isCharging;
     float hold;
-    bool autoFire;                 // ★ 追加：K のオン/オフ状態
+    bool autoFire;                 // K のオン/オフ状態
     ChargeBallet preview;          // 生成済みプレビュー個体参照
 
     void Start()
@@ -65,7 +66,6 @@ public class Shooter : MonoBehaviour
         // チャージ中は常に抑制（発射しない）
         if (!isCharging)
         {
-            // K を押すたびにオン/オフ切り替え
             if (Input.GetKeyDown(normalKey))
             {
                 autoFire = !autoFire;
@@ -81,7 +81,6 @@ public class Shooter : MonoBehaviour
                 }
             }
 
-            // オンの間だけ連射
             if (autoFire)
             {
                 normalCd -= Time.deltaTime;
@@ -94,7 +93,6 @@ public class Shooter : MonoBehaviour
         }
         else
         {
-            // チャージ中はCDリセット（安全策）
             normalCd = 0f;
         }
     }
@@ -104,7 +102,7 @@ public class Shooter : MonoBehaviour
         isCharging = true;
         hold = 0f;
 
-        // ★ チャージ開始時に通常射撃を停止（仕様どおり）
+        // ★ チャージ開始時に通常射撃を停止
         autoFire = false;
         normalCd = 0f;
 
@@ -115,29 +113,27 @@ public class Shooter : MonoBehaviour
         if (!preview) { Debug.LogError("[Shooter] Charge prefab has no ChargeBallet"); return; }
 
         preview.StartPreview(muzzle, previewOffset);
-        UpdateChargePreview(); // 押下直後にも1回反映
+        UpdateChargePreview(); // 押下直後にも1回反映（ここで初期サイズ0.3相当になる）
     }
 
     void UpdateChargePreview()
     {
         if (!preview) return;
 
-        // ホールド進捗 0..1（上限到達まで）
         float t01 = Mathf.Clamp01(hold / Mathf.Max(0.0001f, chargeMaxTime));
         float curve = (chargeCurve != null && chargeCurve.keys.Length > 0) ? chargeCurve.Evaluate(t01) : t01;
 
-        // 上限（能力強化を適用した“いまの最大値”）
         float sizeCapMul = baseChargeMaxSizeMul * Mathf.Max(1f, chargeMaxSizeMul);
         float damageCapAbs = baseChargeMaxDamage * Mathf.Max(1f, chargeMaxDamageMul);
 
-        // 現在サイズ倍率（1→sizeCapMul）
-        float sizeMulNow = Mathf.Lerp(1f, sizeCapMul, curve);
+        float startSizeMul = Mathf.Clamp(chargeStartSizeMul, 0.01f, sizeCapMul);
+        float sizeMulNow = Mathf.Lerp(startSizeMul, sizeCapMul, curve);
 
-        // 現在の想定ダメージ（「プレハブ既定×通常強化」から上限へ）
         float baseDmgAbs = Mathf.Max(0f, preview.damage) * Mathf.Max(0.01f, normalDamageMul);
         float desireDmgAbs = Mathf.Lerp(baseDmgAbs, damageCapAbs, curve);
         float dmgNow = Mathf.Min(desireDmgAbs, damageCapAbs);
 
+        // ← ここで与える sizeMulNow が 0.3 など 1 未満でも OK になる
         preview.UpdatePreview(dmgNow, sizeMulNow);
     }
 

@@ -42,7 +42,10 @@ public class StageFlow : MonoBehaviour
 
     readonly List<SpawnEvent> events = new();
     int nextIdx = 0;
-    float t;
+
+    // ★ 変更: ステージ実時間と、スポーン用スケジュール時間を分離
+    float levelTime = 0f;     // 常に進む
+    float scheduleTime = 0f;  // ボス中は停止（= 凍結）
 
     bool pausedByBoss; // BossManager から制御
     public void SetPausedByBoss(bool v) => pausedByBoss = v;
@@ -52,13 +55,25 @@ public class StageFlow : MonoBehaviour
         if (!csvFile) { Debug.LogError("[StageFlow] CSV が未設定"); return; }
         ParseCsv(csvFile.text);
         events.Sort((a, b) => a.time.CompareTo(b.time));
+
+        // 念のため初期化
+        nextIdx = 0;
+        levelTime = 0f;
+        scheduleTime = 0f;
+        pausedByBoss = false;
     }
 
     void Update()
     {
-        t += Time.deltaTime;
+        // ★ 実時間は常に進める
+        levelTime += Time.deltaTime;
 
-        while (nextIdx < events.Count && t >= events[nextIdx].time)
+        // ★ ボス中はスポーンの時間を止める（= 凍結）
+        if (!pausedByBoss)
+            scheduleTime += Time.deltaTime;
+
+        // ★ スポーン判定は scheduleTime を使う
+        while (nextIdx < events.Count && scheduleTime >= events[nextIdx].time)
         {
             var e = events[nextIdx];
 
@@ -108,7 +123,7 @@ public class StageFlow : MonoBehaviour
                 }
             }
 
-            // --- ボス行なら、StageFlowを一時停止（通常敵停止） ---
+            // --- ボス行なら、以降の通常敵スポーンを一時停止（タイムライン凍結） ---
             if (e.kind == SpawnKind.MidBoss || e.kind == SpawnKind.FinalBoss)
                 SetPausedByBoss(true);
         }
@@ -149,10 +164,6 @@ public class StageFlow : MonoBehaviour
             {
                 string bossRaw = SafeTrimQuotes(cols[8]).ToLower();
                 kind = ParseBossKind(bossRaw);
-            }
-            else if (cols.Length >= 1)
-            {
-                // 後方互換：もし8列目以外に入っていても拾いたければここで拡張可能
             }
 
             // 共通：射撃

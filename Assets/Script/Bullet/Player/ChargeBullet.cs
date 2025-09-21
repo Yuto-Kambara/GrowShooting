@@ -81,14 +81,21 @@ public class ChargeBallet : MonoBehaviour
         anchor = followAnchor;
         anchorOffset = offset;
         if (col) col.enabled = false;
-        // スケール・ダメージは UpdatePreview で随時更新
+
+        // ★ 累積防止：開始時に必ず基準へ戻す（UpdatePreview で即座に上書き）
+        transform.localScale = baseScale;
     }
 
     /// <summary>プレビュー更新（サイズと想定ダメージを都度反映）</summary>
     public void UpdatePreview(float previewDamage, float scaleMul)
     {
         damage = Mathf.Max(0f, previewDamage);
-        transform.localScale = baseScale * Mathf.Max(1f, scaleMul);
+
+        // ★ ここが本題：以前は Mathf.Max(1f, scaleMul) になっており、
+        //     0.3 など 1 未満の倍率が反映されず常に見た目が大きかった。
+        //     「基準×倍率」を上書き適用し、最小だけ 0.01 にクランプ。
+        float safeMul = Mathf.Max(0.01f, scaleMul);
+        transform.localScale = baseScale * safeMul;   // ← 上書き（*= ではない）
     }
 
     /// <summary>発射へ切替（Shooterから呼ぶ）</summary>
@@ -97,7 +104,7 @@ public class ChargeBallet : MonoBehaviour
         mode = Mode.Fired;
         t = 0f;
         anchor = null;
-        if (col) col.enabled = true;   // 当たり判定ON
+        if (col) col.enabled = true;
     }
 
     void OnTriggerEnter2D(Collider2D other)
