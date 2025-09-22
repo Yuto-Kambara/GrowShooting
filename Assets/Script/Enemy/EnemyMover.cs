@@ -1,3 +1,4 @@
+// Assets/Scripts/Enemy/EnemyMover.cs
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -90,12 +91,14 @@ public class EnemyMover : MonoBehaviour
         if (targetIdx >= waypoints.Count) { enabled = false; return; }
 
         Vector3 target = waypoints[targetIdx].pos;
-        Vector3 dir = (target - transform.position);
-        float dist = dir.magnitude;
+        Vector3 to = target - transform.position;
+        float dist = to.magnitude;
 
-        if (dist <= 0.001f)
+        // ★ 到達・スナップ判定：1フレームの移動量で届くならスナップして到達処理
+        float step = speed * Time.deltaTime;
+        if (dist <= step)
         {
-            // 到達 → 停止 → 次の点へ
+            transform.position = target;
             float w = waypoints[targetIdx].wait;
             if (w > 0f) { waiting = true; waitTimer = w; }
             targetIdx++;
@@ -103,8 +106,8 @@ public class EnemyMover : MonoBehaviour
             return;
         }
 
-        Vector3 v = dir.normalized * speed;
-        transform.position += v * Time.deltaTime;
+        // 通常の等速移動
+        transform.position += (to / dist) * step;
     }
 
     // ===== 中継点はシーク、最後は減速到着（各点で停止可） =====
@@ -115,23 +118,29 @@ public class EnemyMover : MonoBehaviour
         {
             Vector3 target = waypoints[targetIdx].pos;
             Vector3 to = target - transform.position;
-            if (to.magnitude <= 0.001f)
+            float dist = to.magnitude;
+
+            // ★ Linear 同様にスナップ
+            float step = speed * Time.deltaTime;
+            if (dist <= step)
             {
+                transform.position = target;
                 float w = waypoints[targetIdx].wait;
                 if (w > 0f) { waiting = true; waitTimer = w; }
                 targetIdx++;
                 return;
             }
-            transform.position += to.normalized * speed * Time.deltaTime;
+
+            transform.position += (to / dist) * step;
             return;
         }
 
         // 最終点は Arrive（減速）
         Vector3 final = waypoints[waypoints.Count - 1].pos;
         Vector3 d = final - transform.position;
-        float dist = d.magnitude;
+        float distF = d.magnitude;
 
-        if (dist <= arriveStopRadius)
+        if (distF <= arriveStopRadius)
         {
             transform.position = final;
             float w = waypoints[waypoints.Count - 1].wait;
@@ -140,8 +149,8 @@ public class EnemyMover : MonoBehaviour
             return;
         }
 
-        float desiredSpeed = (dist < arriveSlowRadius)
-            ? Mathf.Lerp(0f, speed, dist / arriveSlowRadius)
+        float desiredSpeed = (distF < arriveSlowRadius)
+            ? Mathf.Lerp(0f, speed, distF / arriveSlowRadius)
             : speed;
 
         transform.position += d.normalized * desiredSpeed * Time.deltaTime;
