@@ -3572,7 +3572,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   muzzle: {fileID: 2110872980}
-  fireRate: 8
+  fireRate: 4
   normalKey: 107
   chargeKey: 108
   chargeMaxTime: 3
@@ -3607,6 +3607,7 @@ MonoBehaviour:
   chargeMaxSizeMul: 1
   chargeMaxDamageMul: 1
   normalDamageMul: 1
+  normalFireRateAdd: 0
 --- !u!114 &1594079483
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3625,6 +3626,7 @@ MonoBehaviour:
   speedMulStep: 0.02
   chargeStep: 0.05
   damageStep: 0.1
+  rapidStep: 0.5
 --- !u!114 &1594079484
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3826,10 +3828,12 @@ MonoBehaviour:
   regenRate: 0.5
   moveSpeedMul: 1
   normalDamage: 1
+  normalRapidAdd: 0
   maxHP_Cap: 20
   regenRate_Cap: 2
   moveSpeedMul_Cap: 1.8
   normalDamage_Cap: 3
+  normalRapidAdd_Cap: 6
   chargeMaxSizeCapMul: 1
   chargeMaxDamageCapMul: 1
   chargeMaxSizeCapMul_Cap: 3
@@ -3849,10 +3853,7 @@ MonoBehaviour:
   onNormalDmgChanged:
     m_PersistentCalls:
       m_Calls: []
-  onChargeMaxSizeCapChanged:
-    m_PersistentCalls:
-      m_Calls: []
-  onChargeMaxDamageCapChanged:
+  onNormalRapidChanged:
     m_PersistentCalls:
       m_Calls: []
 --- !u!114 &1594079491

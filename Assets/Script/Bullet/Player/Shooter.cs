@@ -6,7 +6,7 @@ public class Shooter : MonoBehaviour
     public Transform muzzle;
 
     [Header("Normal Fire")]
-    public float fireRate = 8f;
+    public float fireRate = 8f;                         // 基礎の連射（発/秒）
     [SerializeField] private KeyCode normalKey = KeyCode.K;   // ← K トグル
 
     [Header("Charge Fire (hold L)")]
@@ -25,7 +25,8 @@ public class Shooter : MonoBehaviour
     [HideInInspector] public float chargeMaxDamageMul = 1f;  // 能力強化で最大攻撃力を拡張
 
     [Header("Other Growth Hooks")]
-    [HideInInspector] public float normalDamageMul = 1f;     // 通常弾用（既存）
+    [HideInInspector] public float normalDamageMul = 1f;     // 通常弾ダメ倍率
+    [HideInInspector] public float normalFireRateAdd = 0f;   // ★ 追加：通常弾連射（発/秒）の“加算”値
 
     private ObjectPool normalPool;
     private ObjectPool chargePool;
@@ -71,9 +72,9 @@ public class Shooter : MonoBehaviour
                 autoFire = !autoFire;
                 if (autoFire)
                 {
-                    // トグルON直後に即1発。その後 fireRate に従って連射
+                    // トグルON直後に即1発。その後 実効 fireRate に従って連射
                     FireNormal();
-                    normalCd = 1f / fireRate;
+                    normalCd = 1f / GetEffectiveFireRate();
                 }
                 else
                 {
@@ -87,7 +88,7 @@ public class Shooter : MonoBehaviour
                 if (normalCd <= 0f)
                 {
                     FireNormal();
-                    normalCd = 1f / fireRate;
+                    normalCd = 1f / GetEffectiveFireRate(); // ★ 実効レートを使用
                 }
             }
         }
@@ -95,6 +96,14 @@ public class Shooter : MonoBehaviour
         {
             normalCd = 0f;
         }
+    }
+
+    // ★ 基礎 fireRate に“加算”を足した実効連射（下限を確保）
+    float GetEffectiveFireRate()
+    {
+        // 負値混入を防ぎ、極端に小さい値で割らないよう下限を設ける
+        float add = Mathf.Max(0f, normalFireRateAdd);
+        return Mathf.Max(0.1f, fireRate + add);
     }
 
     void BeginCharge()
@@ -133,7 +142,7 @@ public class Shooter : MonoBehaviour
         float desireDmgAbs = Mathf.Lerp(baseDmgAbs, damageCapAbs, curve);
         float dmgNow = Mathf.Min(desireDmgAbs, damageCapAbs);
 
-        // ← ここで与える sizeMulNow が 0.3 など 1 未満でも OK になる
+        // ← ここで与える sizeMulNow が 0.3 など 1 未満でも OK
         preview.UpdatePreview(dmgNow, sizeMulNow);
     }
 

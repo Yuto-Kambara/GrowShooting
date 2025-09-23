@@ -1,5 +1,5 @@
+// Assets/Script/Player/GrowthSystem/GrowthSystem.cs
 using UnityEngine;
-using static UnityEngine.CullingGroup;
 
 public class GrowthSystem : MonoBehaviour
 {
@@ -13,7 +13,10 @@ public class GrowthSystem : MonoBehaviour
     public float regenStep = 0.05f;
     public float speedMulStep = 0.02f;
     public float chargeStep = 0.05f;
-    public float damageStep = 0.1f;
+
+    // ★ 変更：通常攻撃は「攻撃力」と「連射速度(加算)」の両方を上げる
+    public float damageStep = 0.1f;   // ダメ倍率 +0.1
+    public float rapidStep = 0.5f;   // 連射速度 +0.5 発/秒（加算）
 
     PlayerStats stats;
 
@@ -23,19 +26,10 @@ public class GrowthSystem : MonoBehaviour
 
     void Update()
     {
-        // 右回り：E（新規）／C（互換）
-        if (Input.GetKeyDown(KeyCode.Q))
-        {
-            SelectNext();
-        }
-        // 左回り：Q（新規）
-        else if (Input.GetKeyDown(KeyCode.E))
-        {
-            SelectPrev();
-        }
+        if (Input.GetKeyDown(KeyCode.Q)) SelectNext();
+        else if (Input.GetKeyDown(KeyCode.E)) SelectPrev();
     }
 
-    // ---- 公開API：外部（UIなど）からも呼べるように ----
     public void SelectNext()
     {
         int n = System.Enum.GetValues(typeof(StatType)).Length;
@@ -59,7 +53,12 @@ public class GrowthSystem : MonoBehaviour
                 case StatType.Regen: stats.AddRegen(regenStep); break;
                 case StatType.Speed: stats.AddSpeed(speedMulStep); break;
                 case StatType.ChargePower: stats.AddCharge(chargeStep); break;
-                case StatType.NormalDamage: stats.AddNormalDamage(damageStep); break;
+
+                // ★ ここで両方上げる（攻撃力 + 連射速度(加算)）
+                case StatType.NormalDamage:
+                    stats.AddNormalDamage(damageStep);
+                    stats.AddNormalFireRate(rapidStep);
+                    break;
             }
         }
         StatsChanged?.Invoke();
