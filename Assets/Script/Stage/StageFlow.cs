@@ -38,14 +38,16 @@ public class StageFlow : MonoBehaviour
 
         // --- ボス用（移動はプレハブの Mover に委譲）---
         public Vector2? bossSpawnPos; // null の場合は defaultBossSpawn
+
+        // ★ 追加：HP指定（nullなら未指定＝プレハブ既定）
+        public float? hpOverride;
     }
 
     readonly List<SpawnEvent> events = new();
     int nextIdx = 0;
 
-    // ★ 変更: ステージ実時間と、スポーン用スケジュール時間を分離
     float levelTime = 0f;     // 常に進む
-    float scheduleTime = 0f;  // ボス中は停止（= 凍結）
+    float scheduleTime = 0f;  // ボス中は凍結
 
     bool pausedByBoss; // BossManager から制御
     public void SetPausedByBoss(bool v) => pausedByBoss = v;
@@ -56,7 +58,6 @@ public class StageFlow : MonoBehaviour
         ParseCsv(csvFile.text);
         events.Sort((a, b) => a.time.CompareTo(b.time));
 
-        // 念のため初期化
         nextIdx = 0;
         levelTime = 0f;
         scheduleTime = 0f;
@@ -65,14 +66,9 @@ public class StageFlow : MonoBehaviour
 
     void Update()
     {
-        // ★ 実時間は常に進める
         levelTime += Time.deltaTime;
+        if (!pausedByBoss) scheduleTime += Time.deltaTime;
 
-        // ★ ボス中はスポーンの時間を止める（= 凍結）
-        if (!pausedByBoss)
-            scheduleTime += Time.deltaTime;
-
-        // ★ スポーン判定は scheduleTime を使う
         while (nextIdx < events.Count && scheduleTime >= events[nextIdx].time)
         {
             var e = events[nextIdx];
@@ -86,17 +82,30 @@ public class StageFlow : MonoBehaviour
             Vector3 spawnPos;
             if (e.kind == SpawnKind.Normal)
             {
-                // 通常敵：path の先頭
                 spawnPos = (e.path != null && e.path.Count > 0) ? (Vector3)e.path[0].pos : Vector3.zero;
             }
             else
             {
-                // ボス：pathは使わず、bossSpawnPos -> default
                 Vector2 p = e.bossSpawnPos ?? defaultBossSpawn;
                 spawnPos = new Vector3(p.x, p.y, 0f);
             }
 
             var go = Instantiate(e.prefab, spawnPos, Quaternion.identity);
+
+            // ★ HPオーバーライド：Health があれば SetMax(hp, fill:true)
+            if (e.hpOverride.HasValue)
+            {
+                var health = go.GetComponent<Health>();
+                if (health)
+                {
+                    float hpVal = Mathf.Max(0.1f, e.hpOverride.Value);
+                    health.SetMax(hpVal, fill: true);
+                }
+                else
+                {
+                    Debug.LogWarning($"[StageFlow] HP 指定 {e.hpOverride.Value} を適用したいが Health が見つかりません: {go.name}");
+                }
+            }
 
             // --- 移動の割当 ---
             if (e.kind == SpawnKind.Normal)
@@ -107,8 +116,7 @@ public class StageFlow : MonoBehaviour
             }
             else
             {
-                // ボス：Moverはプレハブに付いている MidBossMover/FinalBossMover に任せる
-                // ここでは何もしない
+                // ボスの移動は各プレハブの Mover に任せる
             }
 
             // --- 射撃設定は共通 ---
@@ -123,7 +131,7 @@ public class StageFlow : MonoBehaviour
                 }
             }
 
-            // --- ボス行なら、以降の通常敵スポーンを一時停止（タイムライン凍結） ---
+            // ボス行なら以降の通常敵を一時停止（凍結）
             if (e.kind == SpawnKind.MidBoss || e.kind == SpawnKind.FinalBoss)
                 SetPausedByBoss(true);
         }
@@ -137,7 +145,7 @@ public class StageFlow : MonoBehaviour
                         .Where(l => !string.IsNullOrEmpty(l) && !l.StartsWith("#"))
                         .ToArray();
 
-        // 既定の列並び: time,id,pattern,speed,path,shoot,timing,bulletSpec,boss
+        // 列並び: time,id,pattern,speed,path,shoot,timing,bulletSpec,boss,hp(★追加)
         int start = lines[0].StartsWith("time") ? 1 : 0;
         var inv = CultureInfo.InvariantCulture;
 
@@ -158,12 +166,25 @@ public class StageFlow : MonoBehaviour
             }
             string id = cols[1].Trim();
 
-            // boss 列（最後の列を想定。ただし柔軟に見に行く）
+            // boss 列（従来どおり 9列目=インデックス8）
             SpawnKind kind = SpawnKind.Normal;
             if (cols.Length >= 9)
             {
                 string bossRaw = SafeTrimQuotes(cols[8]).ToLower();
                 kind = ParseBossKind(bossRaw);
+            }
+
+            // ★ HP 列（10列目=インデックス9）。空欄や不正は未指定扱い(null)
+            float? hpOverride = null;
+            if (cols.Length >= 10)
+            {
+                string hpRaw = SafeTrimQuotes(cols[9]);
+                if (!string.IsNullOrWhiteSpace(hpRaw) &&
+                    float.TryParse(hpRaw, NumberStyles.Float, inv, out float hpv) &&
+                    hpv > 0f)
+                {
+                    hpOverride = hpv;
+                }
             }
 
             // 共通：射撃
@@ -181,7 +202,7 @@ public class StageFlow : MonoBehaviour
             float speed = 2f;
             List<EnemyMover.Waypoint> path = null;
 
-            // ボス用：スポーン座標（pathの先頭を位置取りにだけ使う。無ければ既定値）
+            // ボス用：スポーン座標（pathの先頭を位置取りにだけ使う）
             Vector2? bossSpawn = null;
 
             if (kind == SpawnKind.Normal)
@@ -197,7 +218,6 @@ public class StageFlow : MonoBehaviour
             }
             else
             {
-                // ボス：動きはCSVを撤廃。pathがあればスポーン位置だけ拾う
                 if (cols.Length >= 5)
                 {
                     var tmp = ParsePath(SafeTrimQuotes(cols[4]));
@@ -216,7 +236,8 @@ public class StageFlow : MonoBehaviour
                 fire = fire,
                 timing = timing,
                 bulletSpec = bulletSpec,
-                bossSpawnPos = bossSpawn
+                bossSpawnPos = bossSpawn,
+                hpOverride = hpOverride // ★
             });
         }
     }
