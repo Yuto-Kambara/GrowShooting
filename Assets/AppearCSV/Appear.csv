@@ -1,5 +1,5 @@
 ﻿time,id,pattern,speed,path,shot,shotTiming,bulletSpec,boss,hp,テンプレート,id,pattern,speed,path,shot,shotTiming,bulletSpec,boss,,
-0.5,FinalBoss,,,,,,,final,,,SmallEnemy,SmoothSpline,10,( 0:7 |  0:3@4 |  0:7 ),deg=180,every=2,"""bullet=normal;damage=1;size=1.3;""",,,
+5,FinalBoss,,,,,,,final,,,SmallEnemy,SmoothSpline,10,( 0:7 |  0:3@4 |  0:7 ),deg=180,every=2,"""bullet=normal;damage=1;size=1.3;""",,,
 1,SmallEnemy,linear,4,(13:4 | -12:4  ),deg=180,every=1.5,"""bullet=normal;damage=1;size=1;speed=9""",,,,SmallEnemy,SmoothSpline,10,( 0:7 |  0:3@4 |  0:7 ),deg=180,every=2,"""bullet=normal;damage=1;size=1.3;""",,,
 1.2,SmallEnemy,linear,4,(13:4 | -12:4  ),deg=180,every=1.5,"""bullet=normal;damage=1;size=1;speed=9""",,,,SmallEnemy,SmoothSpline,10,( 0:7 |  0:3@4 |  0:7 ),deg=180,every=2,"""bullet=normal;damage=1;size=1.3;""",,,
 1.4,ItemEnemy,linear,4,(13:4 | -12:4  ),deg=180,every=1.5,"""bullet=normal;damage=1;size=1;speed=9""",,,,SmallEnemy,SmoothSpline,10,( 0:7 |  0:3@4 |  0:7 ),deg=180,every=2,"""bullet=normal;damage=1;size=1.4;""",,,

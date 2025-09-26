@@ -1,59 +1,51 @@
 ﻿// Assets/Scripts/Audio/AudioManager.cs
 using UnityEngine;
 using UnityEngine.Audio;
+using UnityEngine.SceneManagement;
 
-/// <summary>
-/// BGM のクロスフェード再生＋マスター音量（Mixer）の制御。
-/// ・シングルトン（DontDestroyOnLoad）
-/// ・2枚の AudioSource を用いた安全なクロスフェード
-/// ・Stage/MidBoss/FinalBoss 用のBGMスイッチAPI
-/// </summary>
 public class AudioManager : MonoBehaviour
 {
     public static AudioManager Instance { get; private set; }
 
     [Header("Mixer")]
     [SerializeField] private AudioMixer masterMixer;
-    [Tooltip("AudioMixer 側に Exposed したパラメータ名（dB）")]
     [SerializeField] private string masterVolumeParam = "MasterVolume";
 
     [Header("BGM Clips")]
-    [Tooltip("通常ステージBGM")]
+    public AudioClip titleBgm;
     public AudioClip stageBgm;
-    [Tooltip("中ボスBGM")]
     public AudioClip midBossBgm;
-    [Tooltip("大ボスBGM")]
     public AudioClip finalBossBgm;
+    public AudioClip clearBgm;
 
     [Header("BGM Settings")]
-    [Tooltip("曲切替・停止時の基本クロスフェード時間（秒）")]
     [Range(0f, 5f)] public float crossfadeTime = 0.8f;
-    [Tooltip("BGM 出力用の MixerGroup（任意）")]
     [SerializeField] private AudioMixerGroup bgmGroup;
 
-    /// <summary>現在のマスター音量（0.0001〜1.0）。UI などから参照用。</summary>
+    [Header("Scene Names")]
+    public string titleSceneName = "Title";
+    public string playSceneName = "PlayScene";
+
     public float CurrentVolume { get; private set; } = 1f;
 
-    // --- 内部（クロスフェード） ---
-    private AudioSource _a, _b;       // 2枚看板
-    private AudioSource _fadeIn;      // 今回フェードインする方
-    private AudioSource _fadeOut;     // 今回フェードアウトする方
+    private AudioSource _a, _b;
+    private AudioSource _fadeIn, _fadeOut;
     private bool _fading;
-    private float _fadeT;             // 0..1
-    private bool _activeIsA;          // 現在“前面”で鳴っているのが _a なら true
-    private float _currentFadeTime;   // 今回のフェード時間（呼び出しごとに上書き）
+    private float _fadeT;
+    private bool _activeIsA;
+    private float _currentFadeTime;
 
-    private void Awake()
+    private bool _subscribedBossEvents = false;
+
+    void Awake()
     {
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // Mixer 初期値 → CurrentVolume へ反映
         if (masterMixer && masterMixer.GetFloat(masterVolumeParam, out float db))
             CurrentVolume = Mathf.Pow(10f, db / 20f);
 
-        // BGM用 AudioSource を2つ用意
         _a = gameObject.AddComponent<AudioSource>();
         _b = gameObject.AddComponent<AudioSource>();
         foreach (var s in new[] { _a, _b })
@@ -63,12 +55,24 @@ public class AudioManager : MonoBehaviour
             s.outputAudioMixerGroup = bgmGroup ? bgmGroup : null;
             s.volume = 0f;
         }
-
-        _activeIsA = false;      // 起動直後はどちらも未再生
+        _activeIsA = false;
         _currentFadeTime = crossfadeTime;
+
+        // シーンロードで自動切替
+        SceneManager.sceneLoaded += OnSceneLoaded;
+
+        // ★ 起動直後の現在シーンに対しても即チェック（タイトルから起動時の取りこぼし防止）
+        TryAutoPlayFor(SceneManager.GetActiveScene());
     }
 
-    private void Update()
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        UnsubscribeBossEvents();
+    }
+
+    void Update()
     {
         if (!_fading) return;
 
@@ -81,19 +85,71 @@ public class AudioManager : MonoBehaviour
         if (t >= 1f)
         {
             if (_fadeOut && _fadeOut.isPlaying) _fadeOut.Stop();
-            if (_fadeIn) _fadeIn.volume = 1f; // 念のため 1 に揃える
+            if (_fadeIn) _fadeIn.volume = 1f;
             _fading = false;
-
-            // 現在アクティブ更新（停止フェード時は変更なし）
             if (_fadeIn) _activeIsA = (_fadeIn == _a);
-
             _fadeIn = _fadeOut = null;
         }
     }
 
-    // ===================== 公開API =====================
+    // ===== シーン連動 =====
+    void OnSceneLoaded(Scene scene, LoadSceneMode mode) => TryAutoPlayFor(scene);
 
-    /// <summary>UIスライダーなどから呼ぶ。0..1（内部でdBへログ変換）</summary>
+    void TryAutoPlayFor(Scene scene)
+    {
+        // BossManager イベント購読は Play シーンでのみ行う
+        if (scene.name == playSceneName) TrySubscribeBossEvents();
+        else UnsubscribeBossEvents();
+
+        if (scene.name == titleSceneName)
+        {
+            PlayTitleBgm();     // ★ タイトルに入ったら必ずタイトルBGM
+        }
+        else if (scene.name == playSceneName)
+        {
+            PlayStageBgm();     // プレイに入ったらステージBGM
+        }
+        else
+        {
+            StopBgm(0.5f);      // その他のシーンでは停止（必要に応じて変更可）
+        }
+    }
+
+    void TrySubscribeBossEvents()
+    {
+        if (_subscribedBossEvents) return;
+        var bm = BossManager.Instance ?? FindFirstObjectByType<BossManager>();
+        if (!bm) return;
+        bm.OnBossStarted.AddListener(OnBossStarted);
+        bm.OnBossDefeated.AddListener(OnBossDefeated);
+        _subscribedBossEvents = true;
+    }
+
+    void UnsubscribeBossEvents()
+    {
+        if (!_subscribedBossEvents) return;
+        var bm = BossManager.Instance ?? FindFirstObjectByType<BossManager>();
+        if (bm)
+        {
+            bm.OnBossStarted.RemoveListener(OnBossStarted);
+            bm.OnBossDefeated.RemoveListener(OnBossDefeated);
+        }
+        _subscribedBossEvents = false;
+    }
+
+    void OnBossStarted(BossType type)
+    {
+        if (type == BossType.Mid) PlayMidBossBgm();
+        if (type == BossType.Final) PlayFinalBossBgm();
+    }
+
+    void OnBossDefeated(BossType type)
+    {
+        if (type == BossType.Final) PlayClearBgm();
+        else PlayStageBgm();
+    }
+
+    // ===== 公開API =====
     public void SetVolume01(float v)
     {
         v = Mathf.Clamp(v, 0.0001f, 1f);
@@ -102,46 +158,43 @@ public class AudioManager : MonoBehaviour
         CurrentVolume = v;
     }
 
-    /// <summary>通常ステージBGMへクロスフェード</summary>
+    public void PlayTitleBgm()
+    {
+        _currentFadeTime = crossfadeTime;
+        CrossfadeTo(titleBgm);
+    }
     public void PlayStageBgm()
     {
         _currentFadeTime = crossfadeTime;
         CrossfadeTo(stageBgm);
     }
-
-    /// <summary>中ボスBGMへクロスフェード</summary>
     public void PlayMidBossBgm()
     {
         _currentFadeTime = crossfadeTime;
         CrossfadeTo(midBossBgm);
     }
-
-    /// <summary>大ボスBGMへクロスフェード</summary>
     public void PlayFinalBossBgm()
     {
         _currentFadeTime = crossfadeTime;
         CrossfadeTo(finalBossBgm);
     }
-
-    /// <summary>フェードアウトして停止</summary>
-    /// <param name="fadeTime">0以下なら既定 crossfadeTime を使用</param>
+    public void PlayClearBgm()
+    {
+        _currentFadeTime = crossfadeTime;
+        CrossfadeTo(clearBgm);
+    }
     public void StopBgm(float fadeTime = 0.5f)
     {
         _currentFadeTime = (fadeTime > 0f) ? fadeTime : crossfadeTime;
-        CrossfadeTo(null); // フェードアウトのみ
+        CrossfadeTo(null);
     }
 
-    // ===================== 内部処理 =====================
-
-    /// <summary>
-    /// clip==null なら停止へフェードアウト。clip!=null ならその曲へクロスフェード。
-    /// </summary>
-    private void CrossfadeTo(AudioClip clip)
+    // ===== 内部処理 =====
+    void CrossfadeTo(AudioClip clip)
     {
-        AudioSource current = _activeIsA ? _a : _b; // 現在“前面”
-        AudioSource other = _activeIsA ? _b : _a; // もう一方
+        AudioSource current = _activeIsA ? _a : _b;
+        AudioSource other = _activeIsA ? _b : _a;
 
-        // 同一曲が既に current で鳴っているなら何もしない
         if (clip != null && current.clip == clip && current.isPlaying)
         {
             _fading = false;
@@ -151,27 +204,24 @@ public class AudioManager : MonoBehaviour
 
         if (clip == null)
         {
-            // 停止フェード：どちらか鳴っている方を 1→0 に
             _fadeIn = null;
             _fadeOut = current.isPlaying ? current : other;
-            if (_fadeOut == null) return; // そもそも何も鳴っていない
+            if (_fadeOut == null) return;
             _fadeT = 0f;
             _fading = true;
             return;
         }
 
-        // 新しい曲は「今アクティブでない方」にセットして 0→1 に
         AudioSource incoming = (current == _a) ? _b : _a;
         incoming.clip = clip;
         incoming.time = 0f;
         incoming.volume = 0f;
+        incoming.loop = true;
         incoming.Play();
 
         _fadeIn = incoming;
-        _fadeOut = current.isPlaying ? current : null; // 無音→有音の初回はフェードアウト相手なし
+        _fadeOut = current.isPlaying ? current : null;
         _fadeT = 0f;
         _fading = true;
-
-        // ★ ここで _activeIsA は切り替えない（フェード完了時に確定）
     }
 }

@@ -2871,8 +2871,10 @@ MonoBehaviour:
   stageBgm: {fileID: 8300000, guid: 714b550267b482c47801c6578c3e941e, type: 3}
   midBossBgm: {fileID: 8300000, guid: 0247748a903aeff4f84e9f64429f7283, type: 3}
   finalBossBgm: {fileID: 8300000, guid: 0247748a903aeff4f84e9f64429f7283, type: 3}
+  clearBgm: {fileID: 8300000, guid: c7f74d3dfd53d4e4fab5fce35e6face3, type: 3}
   crossfadeTime: 0.8
   bgmGroup: {fileID: 24300002, guid: 9d2f5be95dc71ec4f8a19656753e1edb, type: 2}
+  playSceneName: PlayScene
 --- !u!4 &1648260059
 Transform:
   m_ObjectHideFlags: 0
