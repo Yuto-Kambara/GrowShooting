@@ -12,8 +12,13 @@ public class PoolManager : MonoBehaviour
 
     void Awake()
     {
-        if (Instance && Instance != this) { Destroy(gameObject); return; }
+        // シーンごとに1つだけ存在させる（DontDestroyOnLoad はしない）
+        if (Instance && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
         Instance = this;
-        DontDestroyOnLoad(gameObject);
+        // ※ DontDestroyOnLoad は削除
     }
 }

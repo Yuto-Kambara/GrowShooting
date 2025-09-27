@@ -31,7 +31,7 @@ public class ClearPanelUI : MonoBehaviour
 
     [Header("Start Scene")]
     [Tooltip("スタート（タイトル）に戻る先のシーン名。Build Settings に登録しておくこと")]
-    public string startSceneName = "TitleScene";
+    public string startSceneName = "Title";
 
     [Header("Formatting")]
     [Tooltip("スコアのフォーマット。{0} に数値が入ります")]

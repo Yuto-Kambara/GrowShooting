@@ -9,9 +9,9 @@ public class BossManager : MonoBehaviour
     public static BossManager Instance { get; private set; }
 
     [Header("Refs")]
-    public ParallaxController parallax;  // 背景スクロール（なければFindで補完）
-    public StageFlow stageFlow;          // 通常出現を一時停止させるため
-    public GameObject clearPanel;        // 大ボス撃破後に表示するパネル（非アクティブで置いておく）
+    public ParallaxController parallax;  // 背景スクロール（未設定なら Awake で補完）
+    public StageFlow stageFlow;          // 通常出現を一時停止
+    public GameObject clearPanel;        // 大ボス撃破後に表示（シーン内のもの）
 
     [Header("Options")]
     public bool stopTimeOnClear = true;  // クリア時に Time.timeScale=0
@@ -25,12 +25,23 @@ public class BossManager : MonoBehaviour
 
     void Awake()
     {
+        // シーン内シングルトン（永続化しない）
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-        DontDestroyOnLoad(gameObject);
 
-        if (!parallax) parallax = FindObjectOfType<ParallaxController>();
-        if (!stageFlow) stageFlow = FindObjectOfType<StageFlow>();
+        // 参照補完（シーンごとに取り直す）
+        if (!parallax) parallax = FindFirstObjectByType<ParallaxController>();
+        if (!stageFlow) stageFlow = FindFirstObjectByType<StageFlow>();
+
+        // clearPanel はシーン側で非アクティブ配置が前提。未割り当てなら軽く探索（任意）
+        if (!clearPanel)
+        {
+            // よくある名前やタグで探す（必要に応じて調整）
+            clearPanel = GameObject.Find("ClearPanel");
+            // タグ運用しているなら：clearPanel = GameObject.FindWithTag("ClearPanel");
+        }
+
+        IsBossActive = false;
     }
 
     // ===== 外部API =====
@@ -45,7 +56,7 @@ public class BossManager : MonoBehaviour
         // 通常スポーン停止
         if (stageFlow) stageFlow.SetPausedByBoss(true);
 
-        // BGM切替
+        // BGM切替（AudioManager 側の自動購読に任せていても冪等）
         switch (type)
         {
             case BossType.Mid: AudioManager.Instance?.PlayMidBossBgm(); break;
@@ -63,10 +74,19 @@ public class BossManager : MonoBehaviour
 
         if (type == BossType.Final)
         {
+            // 念のため、ここで null なら再取得を試みる（シーン側で名前を変えていなければ拾える）
+            if (!clearPanel)
+                clearPanel = GameObject.Find("ClearPanel"); // or FindWithTag
+
             // クリア処理
-            if (clearPanel) clearPanel.SetActive(true);
+            if (clearPanel)
+                clearPanel.SetActive(true);
+            else
+                Debug.LogWarning("[BossManager] clearPanel が見つかりません。シーン内に非アクティブで配置し、参照を割り当ててください。");
+
             if (stopTimeOnClear) Time.timeScale = 0f;
-            // BGM はこのまま（勝利ジングル等入れるならここで切替）
+
+            // BGM は AudioManager が OnBossDefeated(Final) を受けて ClearBgm に遷移
         }
         else
         {

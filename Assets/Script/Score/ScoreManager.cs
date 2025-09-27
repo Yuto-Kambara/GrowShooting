@@ -13,9 +13,10 @@ public class ScoreManager : MonoBehaviour
 
     void Awake()
     {
+        // シーン内で重複していたら自身を破棄（永続化はしない）
         if (Instance && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-        DontDestroyOnLoad(gameObject);
+        // ※ DontDestroyOnLoad は削除
     }
 
     /// <summary>スコアを追加</summary>
